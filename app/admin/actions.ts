@@ -98,7 +98,7 @@ export async function getEvents(status?: string) {
 
   let query = supabase
     .from('events')
-    .select('*, seller_profiles(business_name), venues(venue_name, city)')
+    .select('*, seller_profiles(business_name), venues(venue_name, city), event_categories(slug, name, name_vi)')
     .order('created_at', { ascending: false })
 
   if (status && status !== 'all') {
@@ -117,7 +117,7 @@ export async function getEventDetail(eventId: string) {
   const [eventResult, ticketsResult] = await Promise.all([
     supabase
       .from('events')
-      .select('*, seller_profiles(business_name, email), venues(venue_name, address, city)')
+      .select('*, seller_profiles(business_name, email), venues(venue_name, address, city), event_categories(slug, name, name_vi)')
       .eq('event_id', eventId)
       .single(),
     supabase

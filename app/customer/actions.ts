@@ -14,17 +14,34 @@ async function requireUser() {
 
 // ── Public Events ───────────────────────────────────────────
 
-export async function getPublishedEvents(search?: string) {
+export async function getEventCategories() {
+  const supabase = await createClient()
+  const { data } = await supabase
+    .from('event_categories')
+    .select('category_id, slug, name, name_vi')
+    .order('sort_order', { ascending: true })
+  return data ?? []
+}
+
+export async function getPublishedEvents(search?: string, categorySlug?: string) {
   const supabase = await createClient()
 
   let query = supabase
     .from('events')
-    .select('event_id, event_name, description, banner_url, start_time, end_time, status, venues(venue_name, city)')
+    .select('event_id, event_name, description, banner_url, start_time, end_time, status, category_id, venues(venue_name, city), event_categories(slug, name, name_vi)')
     .in('status', ['published', 'approved'])
+    .or('is_deleted.is.null,is_deleted.eq.false')
     .order('start_time', { ascending: true })
 
   if (search) {
     query = query.ilike('event_name', `%${search}%`)
+  }
+
+  if (categorySlug && categorySlug !== 'all') {
+    const { data: cats } = await supabase.from('event_categories').select('category_id').eq('slug', categorySlug).single()
+    if (cats?.category_id) {
+      query = query.eq('category_id', cats.category_id)
+    }
   }
 
   const { data } = await query
@@ -37,7 +54,7 @@ export async function getEventDetail(eventId: string) {
   const [eventRes, ticketTypesRes] = await Promise.all([
     supabase
       .from('events')
-      .select('event_id, event_name, description, banner_url, start_time, end_time, status, seller_id, venues(venue_id, venue_name, address, city), seller_profiles(business_name)')
+      .select('event_id, event_name, description, banner_url, start_time, end_time, status, seller_id, venues(venue_id, venue_name, address, city), seller_profiles(business_name), event_categories(slug, name, name_vi)')
       .eq('event_id', eventId)
       .single(),
     supabase

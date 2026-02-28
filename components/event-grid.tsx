@@ -18,7 +18,9 @@ interface Event {
   start_time: string
   end_time: string | null
   status: string
+  category_id: string | null
   venues: { venue_name: string; city: string }[] | null
+  event_categories?: { slug: string; name: string; name_vi: string | null }[] | { slug: string; name: string; name_vi: string | null } | null
 }
 
 export default function EventGrid({ category, searchQuery }: EventGridProps) {
@@ -28,13 +30,13 @@ export default function EventGrid({ category, searchQuery }: EventGridProps) {
   useEffect(() => {
     const timer = setTimeout(() => {
       setLoading(true)
-      getPublishedEvents(searchQuery || undefined).then((data) => {
+      getPublishedEvents(searchQuery || undefined, category === 'all' ? undefined : category).then((data) => {
         setEvents(data as Event[])
         setLoading(false)
       })
     }, 300)
     return () => clearTimeout(timer)
-  }, [searchQuery])
+  }, [searchQuery, category])
 
   if (loading) {
     return (

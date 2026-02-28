@@ -5,13 +5,14 @@ import { useParams } from 'next/navigation'
 import Link from 'next/link'
 import {
   ArrowLeft, CalendarDays, MapPin, Clock, Plus, Pencil,
-  Trash2, Loader2, Ticket, Users, Send, X, Grid3x3,
+  Trash2, Loader2, Ticket, Users, Send, X, Grid3x3, Edit,
+  EyeOff, RotateCcw,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
-  getSellerEvents, getTicketTypes, createTicketType,
+  getSellerEventById, getTicketTypes, createTicketType,
   updateTicketType, deleteTicketType, getTicketBuyers,
-  submitEventForApproval,
+  submitEventForApproval, softDeleteEvent, restoreEvent,
 } from '../../actions'
 import SeatMapEditor from '@/components/seat-map-editor'
 
@@ -43,13 +44,12 @@ export default function SellerEventDetailPage() {
   const [seatMapTicketId, setSeatMapTicketId] = useState<string | null>(null)
 
   const loadData = useCallback(async () => {
-    const [eventsRes, ticketsRes, buyersRes] = await Promise.all([
-      getSellerEvents('all'),
+    const [eventRes, ticketsRes, buyersRes] = await Promise.all([
+      getSellerEventById(id),
       getTicketTypes(id),
       getTicketBuyers(id),
     ])
-    const found = eventsRes.data.find((e: any) => e.event_id === id)
-    setEvent(found || null)
+    setEvent(eventRes.data || null)
     setTickets(ticketsRes.data)
     setBuyers(buyersRes.data)
     setLoading(false)
@@ -84,6 +84,17 @@ export default function SellerEventDetailPage() {
     if (result.success) await loadData()
   }
 
+  async function handleSoftDelete() {
+    if (!confirm('Ẩn sự kiện này? Sự kiện sẽ không hiển thị với khách hàng nhưng bạn vẫn xem được trong mục "Đã ẩn".')) return
+    const result = await softDeleteEvent(id)
+    if (result.success) window.location.href = '/seller/events?status=deleted'
+  }
+
+  async function handleRestore() {
+    const result = await restoreEvent(id)
+    if (result.success) await loadData()
+  }
+
   function startEdit(ticket: any) {
     setEditingId(ticket.ticket_type_id)
     setShowForm(true)
@@ -110,14 +121,44 @@ export default function SellerEventDetailPage() {
       <div className="flex items-start justify-between mb-6 gap-4">
         <div>
           <h1 className="text-2xl font-bold">{event.event_name}</h1>
-          <span className={`inline-block mt-2 px-2.5 py-0.5 rounded-full text-xs font-medium ${badge.class}`}>{badge.label}</span>
+          <div className="flex flex-wrap items-center gap-2 mt-2">
+            <span className={`inline-block px-2.5 py-0.5 rounded-full text-xs font-medium ${badge.class}`}>{badge.label}</span>
+            {event.event_categories && (
+              <span className="inline-block px-2.5 py-0.5 rounded-full text-xs font-medium bg-primary/10 text-primary">
+                {event.event_categories.name_vi || event.event_categories.name}
+              </span>
+            )}
+          </div>
         </div>
-        {event.status === 'draft' && (
-          <Button onClick={handleSubmitForApproval} size="sm">
-            <Send className="w-4 h-4 mr-1.5" />
-            Gửi duyệt
-          </Button>
-        )}
+        <div className="flex items-center gap-2">
+          {(event.status === 'draft' || event.status === 'pending_approval' || event.status === 'published') && (
+            <>
+              <Link href={`/seller/events/${id}/edit`}>
+                <Button variant="outline" size="sm">
+                  <Edit className="w-4 h-4 mr-1.5" />
+                  Chỉnh sửa
+                </Button>
+              </Link>
+              {event.status === 'draft' && (
+                <Button onClick={handleSubmitForApproval} size="sm">
+                  <Send className="w-4 h-4 mr-1.5" />
+                  Gửi duyệt
+                </Button>
+              )}
+            </>
+          )}
+          {event.is_deleted ? (
+            <Button variant="outline" size="sm" onClick={handleRestore} className="text-green-600 border-green-200 hover:bg-green-50 dark:hover:bg-green-950/20">
+              <RotateCcw className="w-4 h-4 mr-1.5" />
+              Khôi phục
+            </Button>
+          ) : (
+            <Button variant="outline" size="sm" onClick={handleSoftDelete} className="text-amber-600 border-amber-200 hover:bg-amber-50 dark:hover:bg-amber-950/20">
+              <EyeOff className="w-4 h-4 mr-1.5" />
+              Ẩn sự kiện
+            </Button>
+          )}
+        </div>
       </div>
 
       {/* Event info */}

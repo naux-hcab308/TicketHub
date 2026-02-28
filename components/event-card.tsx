@@ -13,11 +13,13 @@ interface EventCardProps {
     start_time: string
     end_time: string | null
     status: string
-    venues: { venue_name: string; city: string }[] | null
+    venues: { venue_name: string; city: string }[] | { venue_name: string; city: string } | null
+    event_categories?: { slug: string; name: string; name_vi: string | null } | null
   }
 }
 
 export default function EventCard({ event }: EventCardProps) {
+  const venue = Array.isArray(event.venues) ? event.venues[0] : event.venues
   const isOngoing =
     new Date(event.start_time) <= new Date() &&
     event.end_time &&
@@ -38,12 +40,19 @@ export default function EventCard({ event }: EventCardProps) {
               🎫
             </div>
           )}
-          {isOngoing && (
-            <span className="absolute top-3 left-3 flex items-center gap-1 text-xs bg-green-500 text-white px-2.5 py-1 rounded-full font-medium">
-              <span className="w-1.5 h-1.5 bg-white rounded-full animate-pulse" />
-              Đang diễn ra
-            </span>
-          )}
+          <div className="absolute top-3 left-3 flex flex-wrap gap-2">
+            {event.event_categories && (
+              <span className="text-xs bg-primary/90 text-primary-foreground px-2.5 py-1 rounded-full font-medium">
+                {event.event_categories.name_vi || event.event_categories.name}
+              </span>
+            )}
+            {isOngoing && (
+              <span className="flex items-center gap-1 text-xs bg-green-500 text-white px-2.5 py-1 rounded-full font-medium">
+                <span className="w-1.5 h-1.5 bg-white rounded-full animate-pulse" />
+                Đang diễn ra
+              </span>
+            )}
+          </div>
         </div>
 
         <div className="p-4 space-y-3">
@@ -65,10 +74,10 @@ export default function EventCard({ event }: EventCardProps) {
                 })}
               </span>
             </div>
-            {event.venues?.[0] && (
+            {venue && (
               <div className="flex items-center gap-2">
                 <MapPin className="w-4 h-4 flex-shrink-0" />
-                <span className="truncate">{event.venues[0].venue_name}, {event.venues[0].city}</span>
+                <span className="truncate">{venue.venue_name}, {venue.city}</span>
               </div>
             )}
           </div>

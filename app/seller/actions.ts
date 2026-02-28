@@ -104,6 +104,18 @@ export async function updateSellerProfile(formData: FormData) {
   return { success: true }
 }
 
+// ── Event Categories ──────────────────────────────────────────
+
+export async function getEventCategories() {
+  const supabase = await createClient()
+  const { data, error } = await supabase
+    .from('event_categories')
+    .select('category_id, slug, name, name_vi')
+    .order('sort_order', { ascending: true })
+  if (error) return { data: [], error: error.message }
+  return { data: data ?? [], error: null }
+}
+
 // ── Events ──────────────────────────────────────────────────
 
 export async function getSellerEvents(status?: string) {
@@ -112,12 +124,17 @@ export async function getSellerEvents(status?: string) {
 
   let query = supabase
     .from('events')
-    .select('*, venues(venue_name, city)')
+    .select('*, venues(venue_name, city), event_categories(slug, name, name_vi)')
     .eq('seller_id', seller.seller_id)
     .order('created_at', { ascending: false })
 
-  if (status && status !== 'all') {
-    query = query.eq('status', status)
+  if (status === 'deleted') {
+    query = query.eq('is_deleted', true)
+  } else {
+    query = query.or('is_deleted.is.null,is_deleted.eq.false')
+    if (status && status !== 'all') {
+      query = query.eq('status', status)
+    }
   }
 
   const { data, error } = await query
@@ -125,9 +142,51 @@ export async function getSellerEvents(status?: string) {
   return { data: data ?? [], error: null }
 }
 
+export async function getSellerEventById(eventId: string) {
+  const { seller } = await requireSeller()
+  const supabase = await createClient()
+
+  const { data, error } = await supabase
+    .from('events')
+    .select('*, venues(venue_name, city, address), event_categories(category_id, slug, name, name_vi)')
+    .eq('event_id', eventId)
+    .eq('seller_id', seller.seller_id)
+    .single()
+
+  if (error) return { data: null, error: error.message }
+  return { data, error: null }
+}
+
+async function uploadBannerIfPresent(supabase: Awaited<ReturnType<typeof createClient>>, formData: FormData): Promise<string | null> {
+  const file = formData.get('banner') as File | null
+  if (!file || !(file instanceof File) || file.size === 0) return null
+
+  const ext = file.name.split('.').pop() || 'jpg'
+  const path = `${Date.now()}-${crypto.randomUUID()}.${ext}`
+
+  const { data, error } = await supabase.storage
+    .from('event-banners')
+    .upload(path, file, { contentType: file.type, upsert: false })
+
+  if (error) throw new Error(error.message)
+  const { data: urlData } = supabase.storage.from('event-banners').getPublicUrl(data.path)
+  return urlData.publicUrl
+}
+
 export async function createEvent(formData: FormData) {
   const { seller } = await requireSeller()
   const supabase = await createClient()
+
+  let banner_url: string | null = null
+  try {
+    banner_url = await uploadBannerIfPresent(supabase, formData)
+  } catch (e) {
+    return { error: (e as Error).message }
+  }
+  if (!banner_url) {
+    const url = formData.get('banner_url') as string
+    if (url?.trim()) banner_url = url.trim()
+  }
 
   const venue_name = formData.get('venue_name') as string
   const venue_city = formData.get('venue_city') as string
@@ -143,6 +202,9 @@ export async function createEvent(formData: FormData) {
     venue_id = venue?.venue_id ?? null
   }
 
+  const category_id = (formData.get('category_id') as string) || null
+  const catId = category_id?.trim() || null
+
   const { data, error } = await supabase
     .from('events')
     .insert({
@@ -150,7 +212,8 @@ export async function createEvent(formData: FormData) {
       description: formData.get('description') as string,
       seller_id: seller.seller_id,
       venue_id,
-      banner_url: (formData.get('banner_url') as string) || null,
+      category_id: catId,
+      banner_url,
       start_time: formData.get('start_time') as string,
       end_time: (formData.get('end_time') as string) || null,
       status: 'draft',
@@ -160,6 +223,105 @@ export async function createEvent(formData: FormData) {
 
   if (error) return { error: error.message }
   return { success: true, eventId: data.event_id }
+}
+
+export async function updateEvent(eventId: string, formData: FormData) {
+  const { seller } = await requireSeller()
+  const supabase = await createClient()
+
+  const venue_name = formData.get('venue_name') as string
+  const venue_city = formData.get('venue_city') as string
+  const venue_address = formData.get('venue_address') as string
+
+  let venue_id: string | null = null
+  const { data: existingEvent } = await supabase
+    .from('events')
+    .select('venue_id')
+    .eq('event_id', eventId)
+    .eq('seller_id', seller.seller_id)
+    .single()
+
+  if (venue_name?.trim()) {
+    if (existingEvent?.venue_id) {
+      await supabase
+        .from('venues')
+        .update({ venue_name, city: venue_city, address: venue_address })
+        .eq('venue_id', existingEvent.venue_id)
+      venue_id = existingEvent.venue_id
+    } else {
+      const { data: venue } = await supabase
+        .from('venues')
+        .insert({ venue_name, city: venue_city, address: venue_address })
+        .select('venue_id')
+        .single()
+      venue_id = venue?.venue_id ?? null
+    }
+  }
+
+  let banner_url: string | null | undefined
+  if (formData.get('clear_banner') === '1') {
+    banner_url = null
+  } else {
+    banner_url = (formData.get('banner_url') as string) || undefined
+    if (banner_url === '' || !banner_url?.trim()) banner_url = undefined
+  }
+  try {
+    const uploaded = await uploadBannerIfPresent(supabase, formData)
+    if (uploaded) banner_url = uploaded
+  } catch (e) {
+    return { error: (e as Error).message }
+  }
+
+  const category_id = (formData.get('category_id') as string) || null
+  const catId = category_id?.trim() || null
+
+  const updatePayload: Record<string, unknown> = {
+    event_name: formData.get('event_name') as string,
+    description: formData.get('description') as string,
+    venue_id,
+    category_id: catId,
+    start_time: formData.get('start_time') as string,
+    end_time: (formData.get('end_time') as string) || null,
+    updated_at: new Date().toISOString(),
+  }
+  if (banner_url !== undefined) updatePayload.banner_url = banner_url || null
+
+  const { error } = await supabase
+    .from('events')
+    .update(updatePayload)
+    .eq('event_id', eventId)
+    .eq('seller_id', seller.seller_id)
+
+  if (error) return { error: error.message }
+  return { success: true }
+}
+
+export async function softDeleteEvent(eventId: string) {
+  const { seller } = await requireSeller()
+  const supabase = await createClient()
+
+  const { error } = await supabase
+    .from('events')
+    .update({ is_deleted: true, updated_at: new Date().toISOString() })
+    .eq('event_id', eventId)
+    .eq('seller_id', seller.seller_id)
+
+  if (error) return { error: error.message }
+  return { success: true }
+}
+
+export async function restoreEvent(eventId: string) {
+  const { seller } = await requireSeller()
+  const supabase = await createClient()
+
+  const { error } = await supabase
+    .from('events')
+    .update({ is_deleted: false, updated_at: new Date().toISOString() })
+    .eq('event_id', eventId)
+    .eq('seller_id', seller.seller_id)
+
+  if (error) return { error: error.message }
+  return { success: true }
 }
 
 export async function submitEventForApproval(eventId: string) {

@@ -119,6 +119,12 @@ export default function EventDetailPage() {
 
               <h1 className="text-2xl md:text-3xl font-bold mb-4">{event.event_name}</h1>
 
+              {event.event_categories && (
+                <span className="inline-block px-3 py-1 rounded-full text-sm font-medium bg-primary/10 text-primary mb-4">
+                  {event.event_categories.name_vi || event.event_categories.name}
+                </span>
+              )}
+
               <div className="space-y-3 text-sm">
                 <div className="flex items-center gap-3">
                   <Calendar className="w-5 h-5 text-primary flex-shrink-0" />

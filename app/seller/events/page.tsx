@@ -3,9 +3,9 @@
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
-import { Plus, Eye, CalendarDays, Search, Send } from 'lucide-react'
+import { Plus, Eye, CalendarDays, Search, Send, Pencil, EyeOff, RotateCcw } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { getSellerEvents, submitEventForApproval } from '../actions'
+import { getSellerEvents, submitEventForApproval, softDeleteEvent, restoreEvent } from '../actions'
 
 const STATUS_TABS = [
   { value: 'all', label: 'Tất cả' },
@@ -13,6 +13,7 @@ const STATUS_TABS = [
   { value: 'pending_approval', label: 'Chờ duyệt' },
   { value: 'approved', label: 'Đã duyệt' },
   { value: 'published', label: 'Đang bán' },
+  { value: 'deleted', label: 'Đã ẩn' },
 ]
 
 const STATUS_BADGE: Record<string, { class: string; label: string }> = {
@@ -22,6 +23,7 @@ const STATUS_BADGE: Record<string, { class: string; label: string }> = {
   published: { class: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400', label: 'Đang bán' },
   cancelled: { class: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400', label: 'Đã hủy' },
   completed: { class: 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400', label: 'Hoàn thành' },
+  deleted: { class: 'bg-gray-200 text-gray-600 dark:bg-gray-700 dark:text-gray-400', label: 'Đã ẩn' },
 }
 
 export default function SellerEventsPage() {
@@ -32,6 +34,8 @@ export default function SellerEventsPage() {
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
   const [submitting, setSubmitting] = useState<string | null>(null)
+  const [deleting, setDeleting] = useState<string | null>(null)
+  const [restoring, setRestoring] = useState<string | null>(null)
 
   useEffect(() => {
     setLoading(true)
@@ -49,6 +53,27 @@ export default function SellerEventsPage() {
       setEvents(data)
     }
     setSubmitting(null)
+  }
+
+  async function handleSoftDelete(eventId: string) {
+    if (!confirm('Ẩn sự kiện này? Sự kiện sẽ không hiển thị với khách hàng.')) return
+    setDeleting(eventId)
+    const result = await softDeleteEvent(eventId)
+    if (result.success) {
+      const { data } = await getSellerEvents(activeTab)
+      setEvents(data)
+    }
+    setDeleting(null)
+  }
+
+  async function handleRestore(eventId: string) {
+    setRestoring(eventId)
+    const result = await restoreEvent(eventId)
+    if (result.success) {
+      const { data } = await getSellerEvents(activeTab)
+      setEvents(data)
+    }
+    setRestoring(null)
   }
 
   const filtered = events.filter((e) =>
@@ -132,7 +157,14 @@ export default function SellerEventsPage() {
                         <div className="w-10 h-10 rounded-md bg-primary/10 flex items-center justify-center flex-shrink-0">
                           <CalendarDays className="w-5 h-5 text-primary" />
                         </div>
-                        <span className="font-medium">{event.event_name}</span>
+                        <div>
+                          <span className="font-medium">{event.event_name}</span>
+                          {event.event_categories && (
+                            <span className="ml-2 text-xs text-muted-foreground">
+                              ({event.event_categories.name_vi || event.event_categories.name})
+                            </span>
+                          )}
+                        </div>
                       </div>
                     </td>
                     <td className="px-4 py-3 text-muted-foreground">
@@ -142,21 +174,51 @@ export default function SellerEventsPage() {
                       {new Date(event.start_time).toLocaleDateString('vi-VN')}
                     </td>
                     <td className="px-4 py-3">
-                      <span className={`px-2.5 py-0.5 rounded-full text-xs font-medium ${STATUS_BADGE[event.status]?.class || ''}`}>
-                        {STATUS_BADGE[event.status]?.label || event.status}
+                      <span className={`px-2.5 py-0.5 rounded-full text-xs font-medium ${event.is_deleted ? STATUS_BADGE.deleted.class : (STATUS_BADGE[event.status]?.class || '')}`}>
+                        {event.is_deleted ? 'Đã ẩn' : (STATUS_BADGE[event.status]?.label || event.status)}
                       </span>
                     </td>
                     <td className="px-4 py-3 text-right">
                       <div className="flex items-center justify-end gap-2">
-                        {event.status === 'draft' && (
+                        {event.is_deleted ? (
                           <button
-                            onClick={() => handleSubmit(event.event_id)}
-                            disabled={submitting === event.event_id}
-                            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md bg-primary text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-50"
+                            onClick={() => handleRestore(event.event_id)}
+                            disabled={restoring === event.event_id}
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 hover:bg-green-200 dark:hover:bg-green-900/50 transition-colors disabled:opacity-50"
                           >
-                            <Send className="w-3.5 h-3.5" />
-                            Gửi duyệt
+                            <RotateCcw className="w-3.5 h-3.5" />
+                            Khôi phục
                           </button>
+                        ) : (
+                          <>
+                            {event.status === 'draft' && (
+                              <button
+                                onClick={() => handleSubmit(event.event_id)}
+                                disabled={submitting === event.event_id}
+                                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md bg-primary text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-50"
+                              >
+                                <Send className="w-3.5 h-3.5" />
+                                Gửi duyệt
+                              </button>
+                            )}
+                            {(event.status === 'draft' || event.status === 'pending_approval' || event.status === 'published') && (
+                              <Link
+                                href={`/seller/events/${event.event_id}/edit`}
+                                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md bg-secondary hover:bg-secondary/80 transition-colors"
+                              >
+                                <Pencil className="w-3.5 h-3.5" />
+                                Chỉnh sửa
+                              </Link>
+                            )}
+                            <button
+                              onClick={() => handleSoftDelete(event.event_id)}
+                              disabled={deleting === event.event_id}
+                              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 hover:bg-amber-200 dark:hover:bg-amber-900/50 transition-colors disabled:opacity-50"
+                            >
+                              <EyeOff className="w-3.5 h-3.5" />
+                              Ẩn
+                            </button>
+                          </>
                         )}
                         <Link
                           href={`/seller/events/${event.event_id}`}
