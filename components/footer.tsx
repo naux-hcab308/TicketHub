@@ -10,7 +10,7 @@ export default function Footer() {
         <div className="grid grid-cols-1 md:grid-cols-4 gap-8 mb-8">
           {/* Brand */}
           <div>
-            <h3 className="text-2xl font-bold mb-4">Ticketbox</h3>
+            <h3 className="text-2xl font-bold mb-4">TicketHub</h3>
             <p className="text-sm opacity-80">
               Your gateway to unforgettable events and experiences.
             </p>
@@ -109,7 +109,7 @@ export default function Footer() {
         {/* Divider */}
         <div className="border-t border-white/20 pt-8">
           <div className="flex flex-col md:flex-row justify-between items-center text-sm opacity-80">
-            <p>&copy; 2024 Ticketbox. All rights reserved.</p>
+            <p>&copy; 2024 TicketHub. All rights reserved.</p>
             <p>Made with ❤️ for event lovers</p>
           </div>
         </div>

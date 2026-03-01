@@ -8,7 +8,7 @@ import {
   Clock, XCircle, RotateCcw,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { getOrderDetail, processPayment } from '@/app/customer/actions'
+import { getOrderDetail, getVnpayPaymentUrl } from '@/app/customer/actions'
 import Header from '@/components/header'
 
 interface OrderDetail {
@@ -68,15 +68,12 @@ export default function OrderDetailPage() {
   async function handlePayAgain() {
     if (!data) return
     setPaying(true)
-    const result = await processPayment(data.order.order_id)
-    if (result.success) {
-      getOrderDetail(id as string).then((d) => {
-        setData(d as OrderDetail | null)
-        setPaying(false)
-      })
+    const result = await getVnpayPaymentUrl(data.order.order_id)
+    if (result.paymentUrl) {
+      window.location.href = result.paymentUrl
     } else {
       setPaying(false)
-      alert(result.error)
+      alert(result.error || 'Không thể tạo link thanh toán')
     }
   }
 

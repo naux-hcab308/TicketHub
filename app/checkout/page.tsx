@@ -7,7 +7,7 @@ import {
   CreditCard, ShieldCheck, Loader2, ArrowLeft, CheckCircle2, AlertTriangle,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { getCart, createOrder, processPayment } from '@/app/customer/actions'
+import { getCart, createOrder, getVnpayPaymentUrl } from '@/app/customer/actions'
 import Header from '@/components/header'
 
 interface CartItem {
@@ -45,7 +45,6 @@ export default function CheckoutPage() {
     setStep('processing')
     setError(null)
 
-    // Create order
     const orderResult = await createOrder()
     if (orderResult.error) {
       setError(orderResult.error)
@@ -56,15 +55,14 @@ export default function CheckoutPage() {
     setOrderId(orderResult.orderId!)
     setOrderCode(orderResult.orderCode!)
 
-    // Process payment (simulated VNPay)
-    const payResult = await processPayment(orderResult.orderId!)
-    if (payResult.error) {
-      setError(payResult.error)
+    const urlResult = await getVnpayPaymentUrl(orderResult.orderId!)
+    if (urlResult.error || !urlResult.paymentUrl) {
+      setError(urlResult.error || 'Không thể tạo link thanh toán')
       setStep('failed')
       return
     }
 
-    setStep('success')
+    window.location.href = urlResult.paymentUrl
   }
 
   if (loading) {

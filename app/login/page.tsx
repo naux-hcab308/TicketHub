@@ -37,7 +37,7 @@ export default function LoginPage() {
       <div className="w-full max-w-md">
         {/* Logo */}
         <Link href="/" className="block text-center mb-8">
-          <h1 className="text-3xl font-bold text-primary">Ticketbox</h1>
+          <h1 className="text-3xl font-bold text-primary">TicketHub</h1>
           <p className="text-muted-foreground mt-1">
             {isSignUp ? 'Tạo tài khoản mới' : 'Đăng nhập vào tài khoản'}
           </p>

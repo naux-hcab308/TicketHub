@@ -2,6 +2,8 @@
 
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
+import { buildPaymentUrl, isVnpayConfigured, verifyReturnUrl, isVnpaySuccess } from '@/lib/vnpay'
+import { confirmOrderAndGenerateTickets } from '@/lib/order-confirm'
 
 // ── Auth helpers ────────────────────────────────────────────
 
@@ -331,12 +333,13 @@ export async function createOrder() {
 
   const orderCode = `ORD-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`
 
-  // Create order
+  // Create order (customer_id nullable nếu đã chạy migration 007)
   const { data: order, error: orderErr } = await supabase
     .from('orders')
     .insert({
       order_code: orderCode,
       user_id: user.id,
+      customer_id: null,
       total_amount: cartData.total,
       status: 'pending',
       payment_method: 'vnpay',
@@ -344,18 +347,28 @@ export async function createOrder() {
     .select('order_id, order_code')
     .single()
 
-  if (orderErr || !order) return { error: 'Không thể tạo đơn hàng' }
+  if (orderErr || !order) {
+    const msg = orderErr?.message || ''
+    if (msg.includes('customer_id') && msg.includes('null')) {
+      return { error: 'Cấu hình database chưa đúng. Vui lòng chạy migration sql/007_fix_cart_orders_nullable.sql (cho phép customer_id null).' }
+    }
+    return { error: orderErr ? `Không thể tạo đơn hàng: ${msg}` : 'Không thể tạo đơn hàng' }
+  }
 
   // Create order items
   for (const item of cartData.items) {
     const tt = item.ticket_types as any
-    await supabase.from('order_items').insert({
+    const eventId = tt?.event_id ?? tt?.events?.event_id ?? null
+    const { error: itemErr } = await supabase.from('order_items').insert({
       order_id: order.order_id,
-      event_id: tt?.event_id ?? tt?.events?.event_id,
+      event_id: eventId,
       ticket_type_id: item.ticket_type_id,
       quantity: item.quantity,
       unit_price: item.unit_price,
     })
+    if (itemErr) {
+      return { error: `Lỗi tạo chi tiết đơn: ${itemErr.message}` }
+    }
   }
 
   // Clear cart
@@ -364,6 +377,93 @@ export async function createOrder() {
   }
 
   return { success: true, orderId: order.order_id, orderCode: order.order_code }
+}
+
+const APP_URL =
+  process.env.NEXT_PUBLIC_SITE_URL ||
+  (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : null) ||
+  'http://localhost:3000'
+
+/** Trả về URL thanh toán VNPay cho đơn hàng (redirect khách tới VNPay). */
+export async function getVnpayPaymentUrl(orderId: string) {
+  const { supabase, user } = await requireUser()
+
+  if (!isVnpayConfigured()) {
+    return { error: 'Chưa cấu hình VNPay. Vui lòng liên hệ quản trị.' }
+  }
+
+  const { data: order } = await supabase
+    .from('orders')
+    .select('order_id, order_code, total_amount, status')
+    .eq('order_id', orderId)
+    .eq('user_id', user.id)
+    .single()
+
+  if (!order) return { error: 'Đơn hàng không tồn tại' }
+  if (order.status === 'confirmed') return { error: 'Đơn hàng đã được thanh toán' }
+
+  const baseUrl = APP_URL.replace(/\/$/, '')
+  const returnUrl = `${baseUrl}/checkout/vnpay/return`
+  // Không gửi IPN URL khi chạy localhost: VNPay sandbox sẽ thử gọi và thất bại → hiện lỗi chung.
+  // Khi production (domain public) thì gửi để VNPay gọi server-to-server.
+  const isLocalhost = baseUrl.includes('localhost') || baseUrl.includes('127.0.0.1')
+  const ipnUrl = isLocalhost ? undefined : `${baseUrl}/api/vnpay/ipn`
+
+  // orderInfo: chỉ dùng ký tự ASCII, không dấu, không ký tự đặc biệt (yêu cầu VNPay)
+  const orderInfo = `Thanh toan ve su kien ${order.order_code}`
+
+  const paymentUrl = buildPaymentUrl({
+    amount: order.total_amount,
+    txnRef: orderId,
+    orderInfo,
+    returnUrl,
+    ipnUrl,
+    locale: 'vn',
+  })
+
+  return { success: true, paymentUrl }
+}
+
+/**
+ * Xác nhận đơn từ Return URL VNPay (fallback khi IPN không gọi tới, ví dụ chạy local).
+ * Chỉ gọi khi vnp_ResponseCode=00 và kiểm tra checksum.
+ */
+export async function confirmOrderFromVnpayReturn(queryString: string) {
+  const { supabase, user } = await requireUser()
+
+  const params = new URLSearchParams(queryString)
+  const query: Record<string, string> = {}
+  params.forEach((v, k) => { query[k] = v })
+
+  if (!verifyReturnUrl(query)) {
+    return { success: false, error: 'Chữ ký không hợp lệ' }
+  }
+  if (!isVnpaySuccess(query.vnp_ResponseCode)) {
+    return { success: true, alreadyConfirmed: false }
+  }
+
+  const orderId = query.vnp_TxnRef
+  if (!orderId) return { success: false, error: 'Thiếu mã đơn' }
+
+  const { data: order } = await supabase
+    .from('orders')
+    .select('order_id, status')
+    .eq('order_id', orderId)
+    .eq('user_id', user.id)
+    .single()
+
+  if (!order) return { success: false, error: 'Đơn hàng không tồn tại' }
+  if (order.status === 'confirmed') return { success: true, alreadyConfirmed: true }
+
+  const txnNo = query.vnp_TransactionNo || `VNP-${Date.now()}`
+  const result = await confirmOrderAndGenerateTickets(supabase, orderId, {
+    provider: 'vnpay',
+    txnRef: txnNo,
+    paymentMethod: 'vnpay',
+  })
+
+  if (!result.success) return { success: false, error: result.error || 'Xác nhận thất bại' }
+  return { success: true, alreadyConfirmed: false }
 }
 
 export async function processPayment(orderId: string) {
@@ -379,57 +479,13 @@ export async function processPayment(orderId: string) {
   if (!order) return { error: 'Đơn hàng không tồn tại' }
   if (order.status === 'confirmed') return { error: 'Đơn hàng đã được thanh toán' }
 
-  const txnRef = `VNP-${Date.now()}`
-
-  // Create payment record
-  await supabase.from('payments').insert({
-    order_id: orderId,
-    amount: order.total_amount,
+  const result = await confirmOrderAndGenerateTickets(supabase, orderId, {
     provider: 'vnpay',
-    payment_method: 'vnpay_qr',
-    txn_ref: txnRef,
+    txnRef: `VNP-${Date.now()}`,
+    paymentMethod: 'vnpay_qr',
   })
 
-  // Simulate VNPay: confirm order
-  await supabase
-    .from('orders')
-    .update({ status: 'confirmed', paid_at: new Date().toISOString() })
-    .eq('order_id', orderId)
-
-  // Generate tickets
-  const { data: orderItems } = await supabase
-    .from('order_items')
-    .select('order_item_id, event_id, ticket_type_id, quantity')
-    .eq('order_id', orderId)
-
-  if (orderItems) {
-    for (const item of orderItems) {
-      for (let i = 0; i < item.quantity; i++) {
-        const code = `TKT-${Math.random().toString(36).substring(2, 8).toUpperCase()}`
-        await supabase.from('tickets').insert({
-          order_item_id: item.order_item_id,
-          event_id: item.event_id,
-          code,
-          status: 'valid',
-        })
-      }
-
-      // Update quantity_sold
-      const { data: tt } = await supabase
-        .from('ticket_types')
-        .select('quantity_sold')
-        .eq('ticket_type_id', item.ticket_type_id)
-        .single()
-
-      if (tt) {
-        await supabase
-          .from('ticket_types')
-          .update({ quantity_sold: (tt.quantity_sold ?? 0) + item.quantity })
-          .eq('ticket_type_id', item.ticket_type_id)
-      }
-    }
-  }
-
+  if (!result.success) return { error: result.error || 'Xử lý thanh toán thất bại' }
   return { success: true }
 }
 
