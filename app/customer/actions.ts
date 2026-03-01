@@ -404,10 +404,12 @@ export async function getVnpayPaymentUrl(orderId: string) {
 
   const baseUrl = APP_URL.replace(/\/$/, '')
   const returnUrl = `${baseUrl}/checkout/vnpay/return`
-  // Không gửi IPN URL khi chạy localhost: VNPay sandbox sẽ thử gọi và thất bại → hiện lỗi chung.
-  // Khi production (domain public) thì gửi để VNPay gọi server-to-server.
-  const isLocalhost = baseUrl.includes('localhost') || baseUrl.includes('127.0.0.1')
-  const ipnUrl = isLocalhost ? undefined : `${baseUrl}/api/vnpay/ipn`
+
+  // Không gửi vnp_IpnUrl trong payment URL: tránh lỗi VNPay error 99 khi IPN chưa được cấu hình.
+  // Đơn hàng sẽ được xác nhận qua Return URL khi khách quay lại (confirmOrderFromVnpayReturn).
+  // Khi muốn bật IPN: đặt VNPAY_ENABLE_IPN=true và đảm bảo SUPABASE_SERVICE_ROLE_KEY đã set.
+  const enableIpn = process.env.VNPAY_ENABLE_IPN === 'true'
+  const ipnUrl = enableIpn ? `${baseUrl}/api/vnpay/ipn` : undefined
 
   // orderInfo: chỉ dùng ký tự ASCII, không dấu, không ký tự đặc biệt (yêu cầu VNPay)
   const orderInfo = `Thanh toan ve su kien ${order.order_code}`
