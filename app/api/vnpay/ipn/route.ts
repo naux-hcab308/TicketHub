@@ -23,15 +23,17 @@ async function getQueryFromRequest(request: NextRequest): Promise<Record<string,
  * IPN (Instant Payment Notification) - VNPay gọi server-to-server để báo kết quả thanh toán.
  * Hỗ trợ GET (query string) và POST (body form-urlencoded).
  */
+// VNPay yêu cầu IPN luôn trả HTTP 200; kết quả trả qua RspCode trong JSON body
+function ok(rspCode: string, message: string) {
+  return NextResponse.json({ RspCode: rspCode, Message: message }, { status: 200 })
+}
+
 async function processIpn(request: NextRequest): Promise<NextResponse> {
   try {
     const query = await getQueryFromRequest(request)
 
     if (!verifyReturnUrl(query)) {
-      return NextResponse.json(
-        { RspCode: '97', Message: 'Invalid checksum' },
-        { status: 400 }
-      )
+      return ok('97', 'Invalid checksum')
     }
 
     const responseCode = query.vnp_ResponseCode
@@ -39,40 +41,29 @@ async function processIpn(request: NextRequest): Promise<NextResponse> {
     const transactionNo = query.vnp_TransactionNo || ''
 
     if (!txnRef) {
-      return NextResponse.json(
-        { RspCode: '99', Message: 'Missing order reference' },
-        { status: 400 }
-      )
+      return ok('99', 'Missing order reference')
     }
 
-    // Dùng admin client (service role) để bypass RLS — VNPay gọi IPN không có session user
+    // Admin client (service role) để bypass RLS — VNPay gọi IPN không có session user
     const supabase = createAdminClient()
 
-    const { data: order } = await supabase
+    const { data: order, error: orderErr } = await supabase
       .from('orders')
       .select('order_id, total_amount, status')
       .eq('order_id', txnRef)
       .single()
 
-    if (!order) {
-      return NextResponse.json(
-        { RspCode: '01', Message: 'Order not found' },
-        { status: 200 }
-      )
+    if (orderErr || !order) {
+      return ok('01', 'Order not found')
     }
 
     if (order.status === 'confirmed') {
-      return NextResponse.json(
-        { RspCode: '00', Message: 'Confirm Success' },
-        { status: 200 }
-      )
+      return ok('00', 'Confirm Success')
     }
 
     if (!isVnpaySuccess(responseCode)) {
-      return NextResponse.json(
-        { RspCode: '00', Message: 'Confirm Success' },
-        { status: 200 }
-      )
+      // Thanh toán thất bại: ghi nhận nhưng vẫn trả 00 để VNPay không retry
+      return ok('00', 'Confirm Success')
     }
 
     const result = await confirmOrderAndGenerateTickets(supabase, txnRef, {
@@ -81,23 +72,10 @@ async function processIpn(request: NextRequest): Promise<NextResponse> {
       paymentMethod: 'vnpay',
     })
 
-    if (!result.success) {
-      return NextResponse.json(
-        { RspCode: '99', Message: result.error || 'Internal error' },
-        { status: 200 }
-      )
-    }
-
-    return NextResponse.json(
-      { RspCode: '00', Message: 'Confirm Success' },
-      { status: 200 }
-    )
+    return ok(result.success ? '00' : '99', result.success ? 'Confirm Success' : (result.error || 'Internal error'))
   } catch (e) {
     console.error('[VNPay IPN]', e)
-    return NextResponse.json(
-      { RspCode: '99', Message: 'Internal error' },
-      { status: 500 }
-    )
+    return ok('99', 'Internal error')
   }
 }
 
