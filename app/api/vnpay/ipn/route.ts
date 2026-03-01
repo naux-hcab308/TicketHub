@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 import { verifyReturnUrl, isVnpaySuccess } from '@/lib/vnpay'
 import { confirmOrderAndGenerateTickets } from '@/lib/order-confirm'
 
@@ -45,7 +45,8 @@ async function processIpn(request: NextRequest): Promise<NextResponse> {
       )
     }
 
-    const supabase = await createClient()
+    // Dùng admin client (service role) để bypass RLS — VNPay gọi IPN không có session user
+    const supabase = createAdminClient()
 
     const { data: order } = await supabase
       .from('orders')
