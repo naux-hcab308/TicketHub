@@ -15,7 +15,7 @@ export default function Home() {
     <div className="min-h-screen bg-background">
       <Header onSearch={setSearchQuery} />
       <Hero />
-      <div className="container mx-auto px-4 py-12">
+      <div id="events-section" className="container mx-auto px-4 sm:px-6 py-8 sm:py-12">
         <CategoryFilter selected={selectedCategory} onSelect={setSelectedCategory} />
         <EventGrid category={selectedCategory} searchQuery={searchQuery} />
       </div>

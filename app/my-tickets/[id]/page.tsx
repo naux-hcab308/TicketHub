@@ -5,7 +5,7 @@ import { useParams } from 'next/navigation'
 import Link from 'next/link'
 import {
   ArrowLeft, Loader2, Ticket, Calendar, MapPin, CheckCircle2,
-  XCircle, Clock, Download,
+  XCircle, Clock, Download, Armchair,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { getTicketDetail } from '@/app/customer/actions'
@@ -25,6 +25,7 @@ interface TicketDetail {
     description: string | null
     venues: { venue_name: string; address: string; city: string } | null
   } | null
+  seats: { label: string; row_label: string; seat_number: number }[] | null
 }
 
 export default function TicketDetailPage() {
@@ -135,6 +136,12 @@ export default function TicketDetailPage() {
                   {venue.venue_name}{venue.city ? `, ${venue.city}` : ''}
                 </p>
               )}
+              {ticket.seats?.[0] && (
+                <p className="flex items-center justify-center gap-1.5 font-semibold text-foreground">
+                  <Armchair className="w-4 h-4 text-primary" />
+                  Ghế {ticket.seats[0].label}
+                </p>
+              )}
             </div>
           </div>
 
@@ -161,9 +168,14 @@ export default function TicketDetailPage() {
           </div>
 
           {/* Bottom info */}
-          <div className="bg-secondary/50 px-6 py-4 text-xs text-muted-foreground text-center">
+          <div className="bg-secondary/50 px-6 py-4 text-xs text-muted-foreground text-center space-y-1">
             <p>Xuất trình mã QR này tại cổng check-in</p>
-            <p className="mt-1">Mã vé: {ticket.code}</p>
+            <p>Mã vé: {ticket.code}</p>
+            {ticket.seats?.[0] && (
+              <p className="font-semibold text-foreground text-sm">
+                Số ghế: {ticket.seats[0].label}
+              </p>
+            )}
           </div>
         </div>
 

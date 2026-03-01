@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import {
   Ticket, Loader2, ArrowLeft, Calendar, MapPin, CheckCircle2,
-  XCircle, Clock,
+  XCircle, Clock, Armchair,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { getMyTickets } from '@/app/customer/actions'
@@ -24,6 +24,7 @@ interface TicketData {
     end_time: string | null
     venues: { venue_name: string; city: string }[] | null
   } | null
+  seats: { label: string; row_label: string; seat_number: number }[] | null
 }
 
 const STATUS_CONFIG: Record<string, { label: string; color: string; icon: React.ReactNode }> = {
@@ -108,6 +109,12 @@ export default function MyTicketsPage() {
                           <span className="flex items-center gap-1">
                             <MapPin className="w-3 h-3" />
                             {ev.venues[0].venue_name}
+                          </span>
+                        )}
+                        {ticket.seats?.[0] && (
+                          <span className="flex items-center gap-1 font-medium text-primary">
+                            <Armchair className="w-3 h-3" />
+                            Ghế {ticket.seats[0].label}
                           </span>
                         )}
                       </div>

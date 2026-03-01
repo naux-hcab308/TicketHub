@@ -59,7 +59,7 @@ export default function Header({ onSearch }: HeaderProps) {
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-muted-foreground" />
               <input
                 type="text"
-                placeholder="Search events..."
+                placeholder="Tìm kiếm sự kiện..."
                 value={searchValue}
                 onChange={handleSearch}
                 className="w-full pl-10 pr-4 py-2 bg-secondary text-foreground placeholder-muted-foreground rounded-lg border border-border focus:outline-none focus:ring-2 focus:ring-primary"
@@ -158,21 +158,19 @@ export default function Header({ onSearch }: HeaderProps) {
           </button>
         </div>
 
-        <div className="md:hidden mt-4">
-          <div className="relative w-full">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-            <input
-              type="text"
-              placeholder="Search events..."
-              value={searchValue}
-              onChange={handleSearch}
-              className="w-full pl-10 pr-4 py-2 bg-secondary text-foreground placeholder-muted-foreground rounded-lg border border-border focus:outline-none focus:ring-2 focus:ring-primary"
-            />
-          </div>
-        </div>
-
         {isMenuOpen && (
-          <div className="md:hidden mt-4 pb-4 border-t border-border pt-4">
+          <div className="md:hidden mt-3 pb-4 border-t border-border pt-4">
+            {/* Search bar inside mobile menu */}
+            <div className="relative w-full mb-3">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+              <input
+                type="text"
+                placeholder="Tìm kiếm sự kiện..."
+                value={searchValue}
+                onChange={handleSearch}
+                className="w-full pl-10 pr-4 py-2.5 bg-secondary text-foreground placeholder-muted-foreground rounded-lg border border-border focus:outline-none focus:ring-2 focus:ring-primary text-sm"
+              />
+            </div>
             <div className="flex flex-col gap-2">
               {user ? (
                 <>

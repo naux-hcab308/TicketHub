@@ -48,12 +48,12 @@ export default function EventGrid({ category, searchQuery }: EventGridProps) {
 
   return (
     <div>
-      <div className="mb-6">
-        <h2 className="text-xl font-semibold">
+      <div className="mb-4 sm:mb-6">
+        <h2 className="text-base sm:text-xl font-semibold">
           {events.length} sự kiện
         </h2>
       </div>
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
         {events.map((event) => (
           <EventCard key={event.event_id} event={event} />
         ))}

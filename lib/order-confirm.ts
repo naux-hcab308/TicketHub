@@ -2,6 +2,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 
 /**
  * Xác nhận đơn hàng đã thanh toán: cập nhật trạng thái, tạo bản ghi payment, tạo vé và cập nhật quantity_sold.
+ * Với loại vé có sơ đồ ghế: tạo 1 vé/ghế và đánh dấu ghế là "sold".
  * Dùng chung cho IPN VNPay và (nếu cần) xử lý return.
  */
 export async function confirmOrderAndGenerateTickets(
@@ -11,7 +12,7 @@ export async function confirmOrderAndGenerateTickets(
 ): Promise<{ success: boolean; error?: string }> {
   const { data: order, error: orderErr } = await supabase
     .from('orders')
-    .select('order_id, total_amount, status')
+    .select('order_id, total_amount, status, user_id')
     .eq('order_id', orderId)
     .single()
 
@@ -38,14 +39,52 @@ export async function confirmOrderAndGenerateTickets(
 
   if (orderItems) {
     for (const item of orderItems) {
-      for (let i = 0; i < item.quantity; i++) {
-        const code = `TKT-${Math.random().toString(36).substring(2, 8).toUpperCase()}`
-        await supabase.from('tickets').insert({
-          order_item_id: item.order_item_id,
-          event_id: item.event_id,
-          code,
-          status: 'valid',
-        })
+      // Find seats held by this user for this ticket type (seatmap flow)
+      const { data: heldSeats } = await supabase
+        .from('seats')
+        .select('seat_id')
+        .eq('ticket_type_id', item.ticket_type_id)
+        .eq('held_by', order.user_id)
+        .eq('status', 'held')
+
+      if (heldSeats && heldSeats.length > 0) {
+        // Seatmap: create one ticket per seat and mark seat as sold
+        for (const seat of heldSeats) {
+          const code = `TKT-${Math.random().toString(36).substring(2, 8).toUpperCase()}`
+          const { data: ticket } = await supabase
+            .from('tickets')
+            .insert({
+              order_item_id: item.order_item_id,
+              event_id: item.event_id,
+              code,
+              status: 'valid',
+            })
+            .select('ticket_id')
+            .single()
+
+          if (ticket) {
+            await supabase
+              .from('seats')
+              .update({
+                status: 'sold',
+                ticket_id: ticket.ticket_id,
+                held_by: null,
+                held_until: null,
+              })
+              .eq('seat_id', seat.seat_id)
+          }
+        }
+      } else {
+        // Non-seatmap: create tickets by quantity
+        for (let i = 0; i < item.quantity; i++) {
+          const code = `TKT-${Math.random().toString(36).substring(2, 8).toUpperCase()}`
+          await supabase.from('tickets').insert({
+            order_item_id: item.order_item_id,
+            event_id: item.event_id,
+            code,
+            status: 'valid',
+          })
+        }
       }
 
       const { data: tt } = await supabase

@@ -559,7 +559,7 @@ export async function getMyTickets() {
 
   const { data: tickets } = await supabase
     .from('tickets')
-    .select('ticket_id, code, status, created_at, events(event_id, event_name, start_time, end_time, venues(venue_name, city))')
+    .select('ticket_id, code, status, created_at, events(event_id, event_name, start_time, end_time, venues(venue_name, city)), seats(label, row_label, seat_number)')
     .in('order_item_id', oiIds)
     .order('created_at', { ascending: false })
 
@@ -572,7 +572,7 @@ export async function getTicketDetail(ticketId: string) {
   // Verify ownership
   const { data: ticket } = await supabase
     .from('tickets')
-    .select('ticket_id, code, status, created_at, event_id, order_item_id, events(event_id, event_name, start_time, end_time, description, venues(venue_name, address, city))')
+    .select('ticket_id, code, status, created_at, event_id, order_item_id, events(event_id, event_name, start_time, end_time, description, venues(venue_name, address, city)), seats(label, row_label, seat_number)')
     .eq('ticket_id', ticketId)
     .single()
 

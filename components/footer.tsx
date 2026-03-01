@@ -5,29 +5,29 @@ import { Facebook, Twitter, Instagram, Linkedin } from 'lucide-react'
 
 export default function Footer() {
   return (
-    <footer className="bg-primary text-primary-foreground mt-20">
-      <div className="container mx-auto px-4 py-12">
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-8 mb-8">
+    <footer className="bg-primary text-primary-foreground mt-12 sm:mt-20">
+      <div className="container mx-auto px-4 sm:px-6 py-10 sm:py-12">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-6 sm:gap-8 mb-8">
           {/* Brand */}
-          <div>
-            <h3 className="text-2xl font-bold mb-4">TicketHub</h3>
-            <p className="text-sm opacity-80">
-              Your gateway to unforgettable events and experiences.
+          <div className="col-span-2 md:col-span-1">
+            <h3 className="text-2xl font-bold mb-3">TicketHub</h3>
+            <p className="text-sm opacity-80 max-w-xs">
+              Cổng vào thế giới sự kiện tuyệt vời – âm nhạc, thể thao, hội nghị và hơn thế nữa.
             </p>
           </div>
 
           {/* Company Links */}
           <div>
-            <h4 className="font-semibold mb-4">Company</h4>
+            <h4 className="font-semibold mb-3 sm:mb-4">Công ty</h4>
             <ul className="space-y-2 text-sm">
               <li>
                 <Link href="#" className="opacity-80 hover:opacity-100 transition">
-                  About Us
+                  Giới thiệu
                 </Link>
               </li>
               <li>
                 <Link href="#" className="opacity-80 hover:opacity-100 transition">
-                  Careers
+                  Tuyển dụng
                 </Link>
               </li>
               <li>
@@ -37,7 +37,7 @@ export default function Footer() {
               </li>
               <li>
                 <Link href="#" className="opacity-80 hover:opacity-100 transition">
-                  Contact
+                  Liên hệ
                 </Link>
               </li>
             </ul>
@@ -45,26 +45,26 @@ export default function Footer() {
 
           {/* Support Links */}
           <div>
-            <h4 className="font-semibold mb-4">Support</h4>
+            <h4 className="font-semibold mb-3 sm:mb-4">Hỗ trợ</h4>
             <ul className="space-y-2 text-sm">
               <li>
                 <Link href="#" className="opacity-80 hover:opacity-100 transition">
-                  Help Center
+                  Trung tâm trợ giúp
                 </Link>
               </li>
               <li>
                 <Link href="#" className="opacity-80 hover:opacity-100 transition">
-                  FAQs
+                  Câu hỏi thường gặp
                 </Link>
               </li>
               <li>
                 <Link href="#" className="opacity-80 hover:opacity-100 transition">
-                  Terms of Service
+                  Điều khoản dịch vụ
                 </Link>
               </li>
               <li>
                 <Link href="#" className="opacity-80 hover:opacity-100 transition">
-                  Privacy Policy
+                  Chính sách bảo mật
                 </Link>
               </li>
             </ul>
@@ -72,45 +72,45 @@ export default function Footer() {
 
           {/* Connect */}
           <div>
-            <h4 className="font-semibold mb-4">Follow Us</h4>
-            <div className="flex gap-4">
+            <h4 className="font-semibold mb-3 sm:mb-4">Theo dõi chúng tôi</h4>
+            <div className="flex flex-wrap gap-3">
               <Link
                 href="#"
                 aria-label="Facebook"
                 className="p-2 bg-white/20 rounded-full hover:bg-white/30 transition"
               >
-                <Facebook className="w-5 h-5" />
+                <Facebook className="w-4 h-4 sm:w-5 sm:h-5" />
               </Link>
               <Link
                 href="#"
                 aria-label="Twitter"
                 className="p-2 bg-white/20 rounded-full hover:bg-white/30 transition"
               >
-                <Twitter className="w-5 h-5" />
+                <Twitter className="w-4 h-4 sm:w-5 sm:h-5" />
               </Link>
               <Link
                 href="#"
                 aria-label="Instagram"
                 className="p-2 bg-white/20 rounded-full hover:bg-white/30 transition"
               >
-                <Instagram className="w-5 h-5" />
+                <Instagram className="w-4 h-4 sm:w-5 sm:h-5" />
               </Link>
               <Link
                 href="#"
                 aria-label="LinkedIn"
                 className="p-2 bg-white/20 rounded-full hover:bg-white/30 transition"
               >
-                <Linkedin className="w-5 h-5" />
+                <Linkedin className="w-4 h-4 sm:w-5 sm:h-5" />
               </Link>
             </div>
           </div>
         </div>
 
         {/* Divider */}
-        <div className="border-t border-white/20 pt-8">
-          <div className="flex flex-col md:flex-row justify-between items-center text-sm opacity-80">
-            <p>&copy; 2024 TicketHub. All rights reserved.</p>
-            <p>Made with ❤️ for event lovers</p>
+        <div className="border-t border-white/20 pt-6 sm:pt-8">
+          <div className="flex flex-col sm:flex-row justify-between items-center gap-2 text-xs sm:text-sm opacity-80">
+            <p>&copy; 2025 TicketHub. Bảo lưu mọi quyền.</p>
+            <p>Được tạo ra với tình yêu dành cho những người yêu sự kiện</p>
           </div>
         </div>
       </div>
