@@ -1,0 +1,52 @@
+@startuml SD_03_CreateEvent
+
+skinparam sequenceArrowThickness 1.5
+skinparam sequenceParticipantBackgroundColor #D6EAF8
+skinparam sequenceParticipantBorderColor #1E88E5
+skinparam sequenceLifeLineBorderColor #1E88E5
+skinparam sequenceMessageAlign left
+skinparam sequenceGroupBorderColor #E74C3C
+skinparam sequenceGroupFontSize 11
+skinparam noteFontSize 11
+skinparam noteBackgroundColor #FFF9C4
+skinparam noteBorderColor #F9A825
+skinparam actorBackgroundColor #FDEBD0
+skinparam databaseBackgroundColor #D5F5E3
+skinparam databaseBorderColor #1E8449
+
+title 3. Create Event
+
+actor       "Seller"                                      as Seller
+participant "Create Event Page\n(seller/events/create)"   as CreatePage
+participant "Seller Actions\n(app/seller/actions.ts)"     as SellerAct
+participant "Supabase Auth"                               as Auth
+participant "Storage\n(Supabase Storage)"                 as Storage
+database    "Database"                                    as DB
+
+Seller -> CreatePage    : điền form tạo sự kiện\n(tên, mô tả, địa điểm, ảnh bìa, thời gian)
+CreatePage -> SellerAct : createEvent(formData)
+activate SellerAct
+
+SellerAct -> SellerAct  : requireSeller()
+SellerAct -> Auth       : auth.getUser()
+Auth --> SellerAct      : user.id
+SellerAct -> DB         : SELECT seller_id FROM seller_profiles\nWHERE user_id = $userId
+DB --> SellerAct        : { seller_id }
+
+opt Có file ảnh bìa
+  SellerAct -> Storage  : uploadBannerIfPresent()\n→ storage.from('event-banners').upload(path, file)
+  Storage --> SellerAct : banner_url (public URL)
+end
+
+opt Có thông tin địa điểm mới
+  SellerAct -> DB       : INSERT INTO venues\n(venue_name, city, address)
+  DB --> SellerAct      : { venue_id }
+end
+
+SellerAct -> DB         : INSERT INTO events {\n  event_name, description, seller_id,\n  venue_id, category_id, banner_url,\n  start_time, end_time,\n  status: 'draft'\n}
+DB --> SellerAct        : { event_id }
+SellerAct --> CreatePage : { success: true, eventId }
+deactivate SellerAct
+CreatePage --> Seller   : redirect đến trang chi tiết sự kiện
+
+@enduml

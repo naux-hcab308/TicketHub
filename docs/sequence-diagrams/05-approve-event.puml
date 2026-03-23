@@ -1,0 +1,47 @@
+@startuml SD_05_ApproveEvent
+
+skinparam sequenceArrowThickness 1.5
+skinparam sequenceParticipantBackgroundColor #D6EAF8
+skinparam sequenceParticipantBorderColor #1E88E5
+skinparam sequenceLifeLineBorderColor #1E88E5
+skinparam sequenceMessageAlign left
+skinparam sequenceGroupBorderColor #E74C3C
+skinparam sequenceGroupFontSize 11
+skinparam noteFontSize 11
+skinparam noteBackgroundColor #FFF9C4
+skinparam noteBorderColor #F9A825
+skinparam actorBackgroundColor #FDEBD0
+skinparam databaseBackgroundColor #D5F5E3
+skinparam databaseBorderColor #1E8449
+
+title 5. Approve Event
+
+actor       "Admin"                                       as Admin
+participant "Admin Event Page\n(app/admin/events/[id])"   as AdminPage
+participant "Admin Actions\n(app/admin/actions.ts)"       as AdminAct
+database    "Database"                                    as DB
+
+Admin -> AdminPage      : xem danh sách sự kiện chờ duyệt,\nclick "Duyệt" / "Từ chối"
+AdminPage -> AdminAct   : updateEventStatus(eventId, 'published', adminNote)
+activate AdminAct
+
+AdminAct -> AdminAct    : requireAdmin()
+AdminAct -> DB          : SELECT role_id FROM profiles\nWHERE user_id = $userId
+DB --> AdminAct         : { role_id: 1 }
+
+AdminAct -> DB          : UPDATE events\nSET status = 'published',\n    updated_at = now()\nWHERE event_id = $eventId
+DB --> AdminAct         : ok
+
+AdminAct -> DB          : SELECT seller_id FROM events\nWHERE event_id = $eventId
+DB --> AdminAct         : { seller_id }
+
+AdminAct -> DB          : INSERT INTO event_approval_requests {\n  event_id, seller_id,\n  decision: 'approved',\n  admin_note, decision_at: now()\n}
+DB --> AdminAct         : ok
+
+AdminAct --> AdminPage  : { success: true }
+deactivate AdminAct
+AdminPage --> Admin     : cập nhật UI → trạng thái "Đã duyệt / Published"
+
+note over DB : Nếu từ chối:\n  UPDATE events SET status='cancelled'\n  INSERT event_approval_requests\n    decision='rejected'
+
+@enduml

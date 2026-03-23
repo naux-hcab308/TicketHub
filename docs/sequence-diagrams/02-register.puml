@@ -1,0 +1,48 @@
+@startuml SD_02_Register
+
+skinparam sequenceArrowThickness 1.5
+skinparam sequenceParticipantBackgroundColor #D6EAF8
+skinparam sequenceParticipantBorderColor #1E88E5
+skinparam sequenceLifeLineBorderColor #1E88E5
+skinparam sequenceMessageAlign left
+skinparam sequenceGroupBorderColor #E74C3C
+skinparam sequenceGroupFontSize 11
+skinparam noteFontSize 11
+skinparam noteBackgroundColor #FFF9C4
+skinparam noteBorderColor #F9A825
+skinparam actorBackgroundColor #FDEBD0
+skinparam databaseBackgroundColor #D5F5E3
+skinparam databaseBorderColor #1E8449
+
+title 2. Register
+
+actor       "User"                                    as User
+participant "Login Page\n(app/login/page.tsx)"        as LoginPage
+participant "Server Actions\n(app/login/actions.ts)"  as Actions
+participant "Supabase Auth\n(supabase.auth)"           as Auth
+database    "Database"                                as DB
+
+User -> LoginPage      : nhập fullName / email / password\n(chế độ Sign Up)
+LoginPage -> LoginPage : handleEmailSubmit(formData)\n[isSignUp = true]
+LoginPage -> Actions   : signUpWithEmail(formData)
+activate Actions
+Actions -> Auth        : auth.signUp({\n  email, password,\n  options: { data: { full_name } },\n  emailRedirectTo: .../auth/callback\n})
+activate Auth
+Auth -> DB             : INSERT INTO auth.users\n(email, password_hash, raw_user_meta_data)
+DB --> Auth            : new user record
+Auth --> Auth          : gửi email xác nhận
+Auth --> Actions       : { data: { user } } | { error }
+deactivate Auth
+
+alt Đăng ký thất bại
+  Actions --> LoginPage : return { error: error.message }
+  LoginPage --> User    : hiển thị thông báo lỗi
+else Đăng ký thành công
+  Actions --> LoginPage : redirect('/login?message=check_email')
+  deactivate Actions
+  LoginPage --> User    : "Kiểm tra email để xác nhận tài khoản"
+end
+
+note over DB : DB Trigger tự động tạo\nbản ghi trong bảng profiles\nkhi user mới được tạo
+
+@enduml

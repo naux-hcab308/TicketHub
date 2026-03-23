@@ -1,0 +1,81 @@
+@startuml TicketHub_Login_Sequence
+
+' ============================================================
+' TICKETHUB - Login Sequence Diagram
+' ============================================================
+
+skinparam sequenceArrowThickness 1.5
+skinparam sequenceParticipantBackgroundColor #D6EAF8
+skinparam sequenceParticipantBorderColor #1E88E5
+skinparam sequenceLifeLineBorderColor #1E88E5
+skinparam sequenceMessageAlign center
+skinparam noteFontSize 11
+skinparam noteBackgroundColor #FFF3CD
+skinparam noteBorderColor #FFC107
+
+actor       "User"          as User
+participant "Login Page\n(app/login/page.tsx)"       as LoginPage
+participant "Server Actions\n(app/login/actions.ts)"  as Actions
+participant "Supabase Auth\n(supabase.auth)"           as SupabaseAuth
+database    "Database\n(Supabase PostgreSQL)"          as DB
+
+' ============================================================
+' 1. User submits login form
+' ============================================================
+User -> LoginPage : 1: nhập email / password
+
+activate LoginPage
+LoginPage -> LoginPage : 1.1: handleEmailSubmit(formData)
+
+' ============================================================
+' 2. Call Server Action
+' ============================================================
+LoginPage -> Actions : 1.1.1: signInWithEmail(formData)
+activate Actions
+
+' ============================================================
+' 3. Supabase Auth verifies credentials
+' ============================================================
+Actions -> SupabaseAuth : 1.1.1.1: auth.signInWithPassword({ email, password })
+activate SupabaseAuth
+
+SupabaseAuth -> DB : 1.1.1.1.1: SELECT * FROM auth.users\nWHERE email = $email
+activate DB
+DB --> SupabaseAuth : 1.1.1.1.2: user record\n(hashed password match)
+deactivate DB
+
+SupabaseAuth --> Actions : 1.1.1.2: { data: { user, session } }\n  hoặc { error }
+deactivate SupabaseAuth
+
+' ============================================================
+' 4. On error: return early
+' ============================================================
+alt Login thất bại
+  Actions --> LoginPage : return { error: error.message }
+  LoginPage --> User : hiển thị thông báo lỗi
+end
+
+' ============================================================
+' 5. On success: determine redirect by role
+' ============================================================
+Actions -> Actions : 1.1.1.3: getRedirectByRole()
+
+Actions -> SupabaseAuth : 1.1.1.3.1: auth.getUser()
+activate SupabaseAuth
+SupabaseAuth --> Actions : user.id
+deactivate SupabaseAuth
+
+Actions -> DB : 1.1.1.3.2: SELECT role_id FROM profiles\nWHERE user_id = $userId
+activate DB
+DB --> Actions : 1.1.1.3.3: { role_id }
+deactivate DB
+
+Actions --> Actions : 1.1.1.4: xác định dest\n(role_id=1 → /admin\nrole_id=2 → /seller\nmặc định → /)
+
+Actions --> LoginPage : 1.1.2: redirect(dest)
+deactivate Actions
+
+LoginPage --> User : 1.2: chuyển hướng đến dashboard
+deactivate LoginPage
+
+@enduml

@@ -1,0 +1,58 @@
+@startuml SD_09_CheckinTicket
+
+skinparam sequenceArrowThickness 1.5
+skinparam sequenceParticipantBackgroundColor #D6EAF8
+skinparam sequenceParticipantBorderColor #1E88E5
+skinparam sequenceLifeLineBorderColor #1E88E5
+skinparam sequenceMessageAlign left
+skinparam sequenceGroupBorderColor #E74C3C
+skinparam sequenceGroupFontSize 11
+skinparam noteFontSize 11
+skinparam noteBackgroundColor #FFF9C4
+skinparam noteBorderColor #F9A825
+skinparam actorBackgroundColor #FDEBD0
+skinparam databaseBackgroundColor #D5F5E3
+skinparam databaseBorderColor #1E8449
+
+title 9. Check-in Ticket
+
+actor       "Staff"                                       as Staff
+participant "Check-in Page\n(app/staff/checkin)"          as CheckinPage
+participant "Staff Actions\n(app/staff/actions.ts)"       as StaffAct
+database    "Database"                                    as DB
+
+Staff -> CheckinPage    : chọn sự kiện, nhập/quét mã vé
+
+CheckinPage -> StaffAct : validateTicket(eventId, ticketCode)
+activate StaffAct
+
+StaffAct -> StaffAct    : requireStaff()
+StaffAct -> DB          : SELECT token FROM staff_sessions\nWHERE token = $cookieToken
+DB --> StaffAct         : session hợp lệ → { staff_id }
+
+StaffAct -> DB          : SELECT ticket_id, code, status, event_id\nFROM tickets\nWHERE code = $ticketCode
+DB --> StaffAct         : ticket record
+
+alt Mã vé không tồn tại
+  StaffAct --> CheckinPage : { valid: false, error: 'Mã vé không tồn tại' }
+else Vé không thuộc sự kiện
+  StaffAct --> CheckinPage : { valid: false, error: 'Vé không thuộc sự kiện này' }
+else Vé đã sử dụng
+  StaffAct -> DB          : SELECT checkin_time FROM checkin_logs\nWHERE ticket_id = $id AND result = 'success'
+  DB --> StaffAct         : { checkin_time }
+  StaffAct --> CheckinPage : { valid: false,\n  error: 'Vé đã được sử dụng lúc HH:mm' }
+else Vé hợp lệ (status = 'valid')
+  StaffAct --> CheckinPage : { valid: true, ticket }
+  deactivate StaffAct
+
+  CheckinPage -> StaffAct : confirmCheckin(eventId, ticketId)
+  activate StaffAct
+  StaffAct -> DB          : UPDATE tickets\nSET status = 'used'\nWHERE ticket_id = $ticketId
+  StaffAct -> DB          : INSERT INTO checkin_logs {\n  ticket_id, event_id, staff_id,\n  result: 'success',\n  checkin_time: now()\n}
+  DB --> StaffAct         : ok
+  StaffAct --> CheckinPage : { success: true }
+  deactivate StaffAct
+  CheckinPage --> Staff   : "Check-in thành công!"
+end
+
+@enduml

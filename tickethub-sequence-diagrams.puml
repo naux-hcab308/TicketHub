@@ -1,0 +1,508 @@
+@startuml TicketHub_Sequence_Diagrams
+
+' ============================================================
+' TICKETHUB - Full Sequence Diagrams (12 flows)
+' ============================================================
+
+skinparam sequenceArrowThickness 1.5
+skinparam sequenceParticipantBackgroundColor #D6EAF8
+skinparam sequenceParticipantBorderColor #1E88E5
+skinparam sequenceLifeLineBorderColor #1E88E5
+skinparam sequenceMessageAlign left
+skinparam sequenceGroupBorderColor #E74C3C
+skinparam sequenceGroupFontSize 11
+skinparam noteFontSize 11
+skinparam noteBackgroundColor #FFF9C4
+skinparam noteBorderColor #F9A825
+skinparam actorBackgroundColor #FDEBD0
+skinparam databaseBackgroundColor #D5F5E3
+skinparam databaseBorderColor #1E8449
+
+' ============================================================
+' FLOW 1: LOGIN
+' ============================================================
+title 1. Login
+
+actor       "User"                                    as User
+participant "Login Page\n(app/login/page.tsx)"        as LoginPage
+participant "Server Actions\n(app/login/actions.ts)"  as Actions
+participant "Supabase Auth\n(supabase.auth)"           as Auth
+database    "Database\n(Supabase PostgreSQL)"          as DB
+
+User -> LoginPage   : nhập email / password
+LoginPage -> LoginPage : handleEmailSubmit(formData)
+LoginPage -> Actions    : signInWithEmail(formData)
+activate Actions
+Actions -> Auth         : auth.signInWithPassword\n({ email, password })
+activate Auth
+Auth -> DB              : SELECT * FROM auth.users\nWHERE email = $email
+DB --> Auth             : user record
+Auth --> Actions        : { data: { user, session } } | { error }
+deactivate Auth
+
+alt Login thất bại
+  Actions --> LoginPage : return { error: error.message }
+  LoginPage --> User    : hiển thị thông báo lỗi
+else Login thành công
+  Actions -> Actions    : getRedirectByRole()
+  Actions -> Auth       : auth.getUser()
+  Auth --> Actions      : user.id
+  Actions -> DB         : SELECT role_id FROM profiles\nWHERE user_id = $userId
+  DB --> Actions        : { role_id }
+  note right of Actions : role_id=1 → /admin\nrole_id=2 → /seller\ndefault → /
+  Actions --> LoginPage : redirect(dest)
+  deactivate Actions
+  LoginPage --> User    : chuyển hướng đến dashboard
+end
+
+' ============================================================
+newpage 2. Register
+' ============================================================
+
+actor       "User"                                    as User
+participant "Login Page\n(app/login/page.tsx)"        as LoginPage
+participant "Server Actions\n(app/login/actions.ts)"  as Actions
+participant "Supabase Auth\n(supabase.auth)"           as Auth
+database    "Database"                                as DB
+
+User -> LoginPage   : nhập fullName / email / password\n(chế độ Sign Up)
+LoginPage -> LoginPage : handleEmailSubmit(formData)\n[isSignUp = true]
+LoginPage -> Actions    : signUpWithEmail(formData)
+activate Actions
+Actions -> Auth         : auth.signUp({\n  email, password,\n  options: { data: { full_name } },\n  emailRedirectTo: .../auth/callback\n})
+activate Auth
+Auth -> DB              : INSERT INTO auth.users\n(email, password_hash, raw_user_meta_data)
+DB --> Auth             : new user record
+Auth --> Auth           : gửi email xác nhận
+Auth --> Actions        : { data: { user } } | { error }
+deactivate Auth
+
+alt Đăng ký thất bại
+  Actions --> LoginPage : return { error: error.message }
+  LoginPage --> User    : hiển thị thông báo lỗi
+else Đăng ký thành công
+  Actions --> LoginPage : redirect('/login?message=check_email')
+  deactivate Actions
+  LoginPage --> User    : "Kiểm tra email để xác nhận tài khoản"
+end
+
+note over DB : DB Trigger tự động tạo\nbản ghi trong bảng profiles\nkhi user mới được tạo
+
+' ============================================================
+newpage 3. Create Event
+' ============================================================
+
+actor       "Seller"                                      as Seller
+participant "Create Event Page\n(seller/events/create)"   as CreatePage
+participant "Seller Actions\n(app/seller/actions.ts)"     as SellerAct
+participant "Supabase Auth"                               as Auth
+participant "Storage\n(Supabase Storage)"                 as Storage
+database    "Database"                                    as DB
+
+Seller -> CreatePage  : điền form tạo sự kiện\n(tên, mô tả, địa điểm, ảnh bìa, thời gian)
+CreatePage -> SellerAct : createEvent(formData)
+activate SellerAct
+
+SellerAct -> SellerAct  : requireSeller()
+SellerAct -> Auth       : auth.getUser()
+Auth --> SellerAct      : user.id
+SellerAct -> DB         : SELECT seller_id FROM seller_profiles\nWHERE user_id = $userId
+DB --> SellerAct        : { seller_id }
+
+opt Có file ảnh bìa
+  SellerAct -> Storage  : uploadBannerIfPresent()\n→ storage.from('event-banners').upload(path, file)
+  Storage --> SellerAct : banner_url (public URL)
+end
+
+opt Có thông tin địa điểm mới
+  SellerAct -> DB       : INSERT INTO venues\n(venue_name, city, address)
+  DB --> SellerAct      : { venue_id }
+end
+
+SellerAct -> DB         : INSERT INTO events {\n  event_name, description, seller_id,\n  venue_id, category_id, banner_url,\n  start_time, end_time,\n  status: 'draft'\n}
+DB --> SellerAct        : { event_id }
+SellerAct --> CreatePage : { success: true, eventId }
+deactivate SellerAct
+CreatePage --> Seller   : redirect đến trang chi tiết sự kiện
+
+' ============================================================
+newpage 4. Submit Event for Approval
+' ============================================================
+
+actor       "Seller"                                      as Seller
+participant "Event Detail Page\n(seller/events/[id])"     as EventPage
+participant "Seller Actions\n(app/seller/actions.ts)"     as SellerAct
+database    "Database"                                    as DB
+
+Seller -> EventPage   : click "Gửi duyệt"
+EventPage -> SellerAct  : submitEventForApproval(eventId)
+activate SellerAct
+
+SellerAct -> SellerAct  : requireSeller()
+SellerAct -> DB         : SELECT seller_id FROM seller_profiles\nWHERE user_id = $userId
+DB --> SellerAct        : { seller_id }
+
+SellerAct -> DB         : UPDATE events\nSET status = 'pending_approval',\n    updated_at = now()\nWHERE event_id = $eventId\n  AND seller_id = $sellerId
+DB --> SellerAct        : ok
+
+SellerAct -> DB         : INSERT INTO event_approval_requests {\n  event_id, seller_id,\n  decision: 'pending'\n}
+DB --> SellerAct        : ok
+
+SellerAct --> EventPage : { success: true }
+deactivate SellerAct
+EventPage --> Seller    : cập nhật UI → trạng thái "Chờ duyệt"
+
+' ============================================================
+newpage 5. Approve Event
+' ============================================================
+
+actor       "Admin"                                       as Admin
+participant "Admin Event Page\n(app/admin/events/[id])"   as AdminPage
+participant "Admin Actions\n(app/admin/actions.ts)"       as AdminAct
+database    "Database"                                    as DB
+
+Admin -> AdminPage    : xem danh sách sự kiện chờ duyệt,\nclick "Duyệt" / "Từ chối"
+AdminPage -> AdminAct   : updateEventStatus(eventId, 'published', adminNote)
+activate AdminAct
+
+AdminAct -> AdminAct    : requireAdmin()
+AdminAct -> DB          : SELECT role_id FROM profiles\nWHERE user_id = $userId
+DB --> AdminAct         : { role_id: 1 }
+
+AdminAct -> DB          : UPDATE events\nSET status = 'published',\n    updated_at = now()\nWHERE event_id = $eventId
+DB --> AdminAct         : ok
+
+AdminAct -> DB          : SELECT seller_id FROM events\nWHERE event_id = $eventId
+DB --> AdminAct         : { seller_id }
+
+AdminAct -> DB          : INSERT INTO event_approval_requests {\n  event_id, seller_id,\n  decision: 'approved',\n  admin_note, decision_at: now()\n}
+DB --> AdminAct         : ok
+
+AdminAct --> AdminPage  : { success: true }
+deactivate AdminAct
+AdminPage --> Admin     : cập nhật UI → trạng thái "Đã duyệt / Published"
+
+note over DB : Nếu từ chối:\n  UPDATE events SET status='cancelled'\n  INSERT event_approval_requests\n    decision='rejected'
+
+' ============================================================
+newpage 6. Manage Ticket Types
+' ============================================================
+
+actor       "Seller"                                      as Seller
+participant "Event Detail Page\n(seller/events/[id])"     as EventPage
+participant "Seller Actions\n(app/seller/actions.ts)"     as SellerAct
+database    "Database"                                    as DB
+
+Seller -> EventPage   : vào trang quản lý loại vé
+
+group Tạo loại vé mới
+  EventPage -> SellerAct  : createTicketType(formData)
+  activate SellerAct
+  SellerAct -> SellerAct  : requireSeller()
+  SellerAct -> DB         : INSERT INTO ticket_types {\n  event_id, type_name, price,\n  quantity_total,\n  sale_start, sale_end\n}
+  DB --> SellerAct        : ok
+  SellerAct --> EventPage : { success: true }
+  deactivate SellerAct
+end
+
+group Cập nhật loại vé
+  EventPage -> SellerAct  : updateTicketType(ticketTypeId, formData)
+  activate SellerAct
+  SellerAct -> DB         : UPDATE ticket_types\nSET type_name, price, quantity_total,\n    sale_start, sale_end\nWHERE ticket_type_id = $id
+  DB --> SellerAct        : ok
+  SellerAct --> EventPage : { success: true }
+  deactivate SellerAct
+end
+
+group Tạo sơ đồ ghế (tùy chọn)
+  EventPage -> SellerAct  : generateSeatMap(ticketTypeId, eventId,\n  rows, seatsPerRow)
+  activate SellerAct
+  SellerAct -> DB         : DELETE FROM seats\nWHERE ticket_type_id = $id
+  SellerAct -> DB         : INSERT INTO seats (batch)\n[rows × seatsPerRow ghế]
+  SellerAct -> DB         : UPDATE ticket_types\nSET has_seatmap = true,\n    quantity_total = rows × seatsPerRow
+  DB --> SellerAct        : ok
+  SellerAct --> EventPage : { success: true, totalSeats }
+  deactivate SellerAct
+end
+
+group Xóa loại vé
+  EventPage -> SellerAct  : deleteTicketType(ticketTypeId)
+  activate SellerAct
+  SellerAct -> DB         : DELETE FROM ticket_types\nWHERE ticket_type_id = $id
+  DB --> SellerAct        : ok
+  SellerAct --> EventPage : { success: true }
+  deactivate SellerAct
+end
+
+EventPage --> Seller    : cập nhật danh sách loại vé
+
+' ============================================================
+newpage 7. Add Ticket to Cart
+' ============================================================
+
+actor       "Customer"                                    as Customer
+participant "Event Detail Page\n(app/events/[id])"        as EventPage
+participant "Customer Actions\n(app/customer/actions.ts)" as CustAct
+participant "Supabase Auth"                               as Auth
+database    "Database"                                    as DB
+
+Customer -> EventPage : chọn loại vé & số lượng,\nclick "Thêm vào giỏ hàng"
+EventPage -> CustAct    : addToCart(ticketTypeId, quantity, eventId)
+activate CustAct
+
+CustAct -> CustAct      : requireUser()
+CustAct -> Auth         : auth.getUser()
+Auth --> CustAct        : { user }
+
+CustAct -> CustAct      : getOrCreateCart()
+CustAct -> DB           : SELECT cart_id FROM carts\nWHERE user_id = $userId
+alt Chưa có giỏ hàng
+  CustAct -> DB         : INSERT INTO carts { user_id }
+  DB --> CustAct        : { cart_id }
+else Đã có giỏ hàng
+  DB --> CustAct        : { cart_id }
+end
+
+CustAct -> DB           : SELECT quantity_total, quantity_sold,\n  price, sale_start, sale_end\nFROM ticket_types\nWHERE ticket_type_id = $id
+DB --> CustAct          : ticket type info
+
+alt Vé không còn đủ số lượng
+  CustAct --> EventPage : { error: 'Chỉ còn N vé' }
+  EventPage --> Customer : thông báo lỗi
+else Chưa mở bán / hết thời gian
+  CustAct --> EventPage : { error: 'Chưa mở bán' }
+  EventPage --> Customer : thông báo lỗi
+else Hợp lệ
+  CustAct -> DB         : SELECT quantity FROM cart_items\nWHERE cart_id = $cartId\n  AND ticket_type_id = $id
+  alt Đã có trong giỏ
+    CustAct -> DB       : UPDATE cart_items\nSET quantity = quantity + N,\n    hold_until = now() + 15min
+  else Chưa có trong giỏ
+    CustAct -> DB       : INSERT INTO cart_items {\n  cart_id, ticket_type_id,\n  quantity, unit_price,\n  hold_until: now() + 15min\n}
+  end
+  DB --> CustAct        : ok
+  CustAct --> EventPage : { success: true }
+  deactivate CustAct
+  EventPage --> Customer : cập nhật số lượng giỏ hàng
+end
+
+' ============================================================
+newpage 8. Payment VNPay
+' ============================================================
+
+actor       "Customer"                                    as Customer
+participant "Checkout Page\n(app/checkout)"               as Checkout
+participant "Customer Actions\n(app/customer/actions.ts)" as CustAct
+participant "VNPay Gateway"                               as VNPay
+participant "Return Page\n(checkout/vnpay/return)"        as ReturnPage
+database    "Database"                                    as DB
+
+Customer -> Checkout  : xem giỏ hàng, click "Thanh toán"
+
+Checkout -> CustAct     : createOrder()
+activate CustAct
+CustAct -> CustAct      : getCart() → SELECT cart_items
+CustAct -> DB           : INSERT INTO orders {\n  order_code, user_id,\n  total_amount,\n  status: 'pending',\n  payment_method: 'vnpay'\n}
+DB --> CustAct          : { order_id, order_code }
+loop foreach cart_item
+  CustAct -> DB         : INSERT INTO order_items {\n  order_id, event_id,\n  ticket_type_id,\n  quantity, unit_price\n}
+end
+CustAct -> DB           : DELETE FROM cart_items\nWHERE cart_id = $cartId
+CustAct --> Checkout    : { success, orderId, orderCode }
+deactivate CustAct
+
+Checkout -> CustAct     : getVnpayPaymentUrl(orderId)
+activate CustAct
+CustAct -> DB           : SELECT order_id, order_code, total_amount\nFROM orders WHERE order_id = $id
+DB --> CustAct          : order info
+CustAct -> CustAct      : buildPaymentUrl({\n  amount, txnRef: orderId,\n  orderInfo, returnUrl\n})\n→ tạo URL với HMAC-SHA512
+CustAct --> Checkout    : { success, paymentUrl }
+deactivate CustAct
+
+Checkout --> Customer   : redirect → VNPay payment page
+Customer -> VNPay       : thực hiện thanh toán (QR / ATM / Visa)
+VNPay --> Customer      : redirect → /checkout/vnpay/return?vnp_*
+
+Customer -> ReturnPage  : load trang Return URL
+ReturnPage -> CustAct   : confirmOrderFromVnpayReturn(queryString)
+activate CustAct
+CustAct -> CustAct      : verifyReturnUrl(query)\n→ kiểm tra HMAC checksum
+CustAct -> CustAct      : isVnpaySuccess(vnp_ResponseCode)
+
+alt Thanh toán thành công (ResponseCode = '00')
+  CustAct -> CustAct    : confirmOrderAndGenerateTickets(\n  supabase, orderId, paymentMeta\n)
+  CustAct -> DB         : INSERT INTO payments {\n  order_id, amount, provider: 'vnpay',\n  txn_ref: vnp_TransactionNo\n}
+  CustAct -> DB         : UPDATE orders\nSET status = 'confirmed',\n    paid_at = now()
+  loop foreach order_item
+    CustAct -> DB       : INSERT INTO tickets {\n  order_item_id, event_id,\n  code: 'TKT-XXXXXX',\n  status: 'valid'\n}
+    CustAct -> DB       : UPDATE ticket_types\nSET quantity_sold = quantity_sold + N
+  end
+  CustAct --> ReturnPage : { success: true }
+  deactivate CustAct
+  ReturnPage --> Customer : "Thanh toán thành công!\nXem vé của bạn"
+else Thanh toán thất bại / huỷ
+  ReturnPage --> Customer : "Thanh toán thất bại"
+end
+
+' ============================================================
+newpage 9. Check-in Ticket
+' ============================================================
+
+actor       "Staff"                                           as Staff
+participant "Check-in Page\n(app/staff/checkin)"              as CheckinPage
+participant "Staff Actions\n(app/staff/actions.ts)"           as StaffAct
+database    "Database"                                        as DB
+
+Staff -> CheckinPage  : chọn sự kiện, nhập/quét mã vé
+
+CheckinPage -> StaffAct : validateTicket(eventId, ticketCode)
+activate StaffAct
+
+StaffAct -> StaffAct    : requireStaff()
+StaffAct -> DB          : SELECT token FROM staff_sessions\nWHERE token = $cookieToken
+DB --> StaffAct         : session hợp lệ → { staff_id }
+
+StaffAct -> DB          : SELECT ticket_id, code, status, event_id\nFROM tickets\nWHERE code = $ticketCode
+DB --> StaffAct         : ticket record
+
+alt Mã vé không tồn tại
+  StaffAct --> CheckinPage : { valid: false, error: 'Mã vé không tồn tại' }
+else Vé không thuộc sự kiện
+  StaffAct --> CheckinPage : { valid: false, error: 'Vé không thuộc sự kiện này' }
+else Vé đã sử dụng
+  StaffAct -> DB          : SELECT checkin_time FROM checkin_logs\nWHERE ticket_id = $id AND result = 'success'
+  DB --> StaffAct         : { checkin_time }
+  StaffAct --> CheckinPage : { valid: false,\n  error: 'Vé đã được sử dụng lúc HH:mm' }
+else Vé hợp lệ (status = 'valid')
+  StaffAct --> CheckinPage : { valid: true, ticket }
+  deactivate StaffAct
+
+  CheckinPage -> StaffAct : confirmCheckin(eventId, ticketId)
+  activate StaffAct
+  StaffAct -> DB          : UPDATE tickets\nSET status = 'used'\nWHERE ticket_id = $ticketId
+  StaffAct -> DB          : INSERT INTO checkin_logs {\n  ticket_id, event_id, staff_id,\n  result: 'success',\n  checkin_time: now()\n}
+  DB --> StaffAct         : ok
+  StaffAct --> CheckinPage : { success: true }
+  deactivate StaffAct
+  CheckinPage --> Staff   : "Check-in thành công!"
+end
+
+' ============================================================
+newpage 10. View Buyer List
+' ============================================================
+
+actor       "Seller"                                          as Seller
+participant "Event Detail Page\n(seller/events/[id])"         as EventPage
+participant "Seller Actions\n(app/seller/actions.ts)"         as SellerAct
+database    "Database"                                        as DB
+
+Seller -> EventPage   : click tab "Danh sách người mua"
+EventPage -> SellerAct  : getTicketBuyers(eventId)
+activate SellerAct
+
+SellerAct -> SellerAct  : requireSeller()
+SellerAct -> DB         : SELECT seller_id FROM seller_profiles\nWHERE user_id = $userId
+DB --> SellerAct        : { seller_id }
+
+SellerAct -> DB         : SELECT\n  order_items.*,\n  orders(order_code, status, paid_at,\n    customer_id, created_at),\n  ticket_types(type_name, price)\nFROM order_items\nWHERE event_id = $eventId
+DB --> SellerAct        : danh sách người mua
+
+SellerAct --> EventPage : { data: buyers[] }
+deactivate SellerAct
+EventPage --> Seller    : hiển thị bảng danh sách người mua\n(mã đơn, loại vé, số lượng, đơn giá,\n trạng thái, ngày mua)
+
+' ============================================================
+newpage 11. Manage Check-in Staff
+' ============================================================
+
+actor       "Seller"                                          as Seller
+participant "Staff Page\n(app/seller/staff)"                  as StaffPage
+participant "Seller Actions\n(app/seller/actions.ts)"         as SellerAct
+database    "Database"                                        as DB
+
+Seller -> StaffPage   : vào trang quản lý nhân viên
+
+StaffPage -> SellerAct  : getStaff()
+activate SellerAct
+SellerAct -> SellerAct  : requireSeller()
+SellerAct -> DB         : SELECT * FROM staff\nWHERE seller_id = $sellerId\nORDER BY created_at DESC
+DB --> SellerAct        : staff[]
+SellerAct --> StaffPage : { data: staff[] }
+deactivate SellerAct
+
+group Thêm nhân viên mới
+  Seller -> StaffPage   : điền form thêm nhân viên
+  StaffPage -> SellerAct  : addStaff(formData)
+  activate SellerAct
+  SellerAct -> SellerAct  : tạo employee_code\n= 'STF-' + Date.now().toString(36)
+  SellerAct -> DB         : INSERT INTO staff {\n  seller_id, name,\n  employee_code, staff_number,\n  shift_id, status: 'active'\n}
+  DB --> SellerAct        : ok
+  SellerAct --> StaffPage : { success: true, code: 'STF-XXX' }
+  deactivate SellerAct
+  StaffPage --> Seller    : hiển thị mã nhân viên vừa tạo
+end
+
+group Cập nhật ca làm việc
+  Seller -> StaffPage   : chỉnh sửa ca (shift_id) của nhân viên
+  StaffPage -> SellerAct  : updateStaffStatus(staffId, shiftId)
+  activate SellerAct
+  SellerAct -> DB         : UPDATE staff\nSET shift_id = $shiftId\nWHERE staff_id = $staffId\n  AND seller_id = $sellerId
+  DB --> SellerAct        : ok
+  SellerAct --> StaffPage : { success: true }
+  deactivate SellerAct
+end
+
+group Xóa nhân viên
+  Seller -> StaffPage   : click "Xóa"
+  StaffPage -> SellerAct  : deleteStaff(staffId)
+  activate SellerAct
+  SellerAct -> DB         : DELETE FROM staff\nWHERE staff_id = $staffId\n  AND seller_id = $sellerId
+  DB --> SellerAct        : ok
+  SellerAct --> StaffPage : { success: true }
+  deactivate SellerAct
+  StaffPage --> Seller    : cập nhật danh sách
+end
+
+' ============================================================
+newpage 12. View Purchase History
+' ============================================================
+
+actor       "Customer"                                        as Customer
+participant "Orders Page\n(app/orders)"                       as OrdersPage
+participant "Order Detail Page\n(app/orders/[id])"            as DetailPage
+participant "Customer Actions\n(app/customer/actions.ts)"     as CustAct
+participant "Supabase Auth"                                   as Auth
+database    "Database"                                        as DB
+
+Customer -> OrdersPage : truy cập lịch sử mua hàng
+OrdersPage -> CustAct    : getOrders()
+activate CustAct
+
+CustAct -> CustAct       : requireUser()
+CustAct -> Auth          : auth.getUser()
+Auth --> CustAct         : { user }
+
+CustAct -> DB            : SELECT order_id, order_code,\n  total_amount, status,\n  payment_method, paid_at, created_at\nFROM orders\nWHERE user_id = $userId\nORDER BY created_at DESC
+DB --> CustAct           : orders[]
+CustAct --> OrdersPage   : orders[]
+deactivate CustAct
+OrdersPage --> Customer  : hiển thị danh sách đơn hàng
+
+Customer -> DetailPage   : click vào đơn hàng cụ thể
+DetailPage -> CustAct    : getOrderDetail(orderId)
+activate CustAct
+CustAct -> CustAct       : requireUser()
+
+CustAct -> DB            : SELECT order_id, order_code,\n  total_amount, status, paid_at\nFROM orders\nWHERE order_id = $orderId\n  AND user_id = $userId
+DB --> CustAct           : order info
+
+CustAct -> DB            : SELECT order_item_id, quantity,\n  unit_price,\n  ticket_types(type_name),\n  events(event_name, start_time,\n    venues(venue_name))\nFROM order_items\nWHERE order_id = $orderId
+DB --> CustAct           : order items[]
+
+CustAct -> DB            : SELECT payment_id, amount,\n  provider, txn_ref, created_at\nFROM payments\nWHERE order_id = $orderId\nLIMIT 1
+DB --> CustAct           : payment info
+
+CustAct --> DetailPage   : { order, items[], payment }
+deactivate CustAct
+DetailPage --> Customer  : hiển thị chi tiết đơn hàng,\nthông tin vé & thanh toán
+
+@enduml

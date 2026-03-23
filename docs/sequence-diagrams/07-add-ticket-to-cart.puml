@@ -1,0 +1,64 @@
+@startuml SD_07_AddTicketToCart
+
+skinparam sequenceArrowThickness 1.5
+skinparam sequenceParticipantBackgroundColor #D6EAF8
+skinparam sequenceParticipantBorderColor #1E88E5
+skinparam sequenceLifeLineBorderColor #1E88E5
+skinparam sequenceMessageAlign left
+skinparam sequenceGroupBorderColor #E74C3C
+skinparam sequenceGroupFontSize 11
+skinparam noteFontSize 11
+skinparam noteBackgroundColor #FFF9C4
+skinparam noteBorderColor #F9A825
+skinparam actorBackgroundColor #FDEBD0
+skinparam databaseBackgroundColor #D5F5E3
+skinparam databaseBorderColor #1E8449
+
+title 7. Add Ticket to Cart
+
+actor       "Customer"                                    as Customer
+participant "Event Detail Page\n(app/events/[id])"        as EventPage
+participant "Customer Actions\n(app/customer/actions.ts)" as CustAct
+participant "Supabase Auth"                               as Auth
+database    "Database"                                    as DB
+
+Customer -> EventPage   : chọn loại vé & số lượng,\nclick "Thêm vào giỏ hàng"
+EventPage -> CustAct    : addToCart(ticketTypeId, quantity, eventId)
+activate CustAct
+
+CustAct -> CustAct      : requireUser()
+CustAct -> Auth         : auth.getUser()
+Auth --> CustAct        : { user }
+
+CustAct -> CustAct      : getOrCreateCart()
+CustAct -> DB           : SELECT cart_id FROM carts\nWHERE user_id = $userId
+alt Chưa có giỏ hàng
+  CustAct -> DB         : INSERT INTO carts { user_id }
+  DB --> CustAct        : { cart_id }
+else Đã có giỏ hàng
+  DB --> CustAct        : { cart_id }
+end
+
+CustAct -> DB           : SELECT quantity_total, quantity_sold,\n  price, sale_start, sale_end\nFROM ticket_types\nWHERE ticket_type_id = $id
+DB --> CustAct          : ticket type info
+
+alt Vé không còn đủ số lượng
+  CustAct --> EventPage : { error: 'Chỉ còn N vé' }
+  EventPage --> Customer : thông báo lỗi
+else Chưa mở bán / hết thời gian
+  CustAct --> EventPage : { error: 'Chưa mở bán' }
+  EventPage --> Customer : thông báo lỗi
+else Hợp lệ
+  CustAct -> DB         : SELECT quantity FROM cart_items\nWHERE cart_id = $cartId\n  AND ticket_type_id = $id
+  alt Đã có trong giỏ
+    CustAct -> DB       : UPDATE cart_items\nSET quantity = quantity + N,\n    hold_until = now() + 15min
+  else Chưa có trong giỏ
+    CustAct -> DB       : INSERT INTO cart_items {\n  cart_id, ticket_type_id,\n  quantity, unit_price,\n  hold_until: now() + 15min\n}
+  end
+  DB --> CustAct        : ok
+  CustAct --> EventPage : { success: true }
+  deactivate CustAct
+  EventPage --> Customer : cập nhật số lượng giỏ hàng
+end
+
+@enduml

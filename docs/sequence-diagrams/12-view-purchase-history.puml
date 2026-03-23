@@ -1,0 +1,58 @@
+@startuml SD_12_ViewPurchaseHistory
+
+skinparam sequenceArrowThickness 1.5
+skinparam sequenceParticipantBackgroundColor #D6EAF8
+skinparam sequenceParticipantBorderColor #1E88E5
+skinparam sequenceLifeLineBorderColor #1E88E5
+skinparam sequenceMessageAlign left
+skinparam sequenceGroupBorderColor #E74C3C
+skinparam sequenceGroupFontSize 11
+skinparam noteFontSize 11
+skinparam noteBackgroundColor #FFF9C4
+skinparam noteBorderColor #F9A825
+skinparam actorBackgroundColor #FDEBD0
+skinparam databaseBackgroundColor #D5F5E3
+skinparam databaseBorderColor #1E8449
+
+title 12. View Purchase History
+
+actor       "Customer"                                    as Customer
+participant "Orders Page\n(app/orders)"                   as OrdersPage
+participant "Order Detail Page\n(app/orders/[id])"        as DetailPage
+participant "Customer Actions\n(app/customer/actions.ts)" as CustAct
+participant "Supabase Auth"                               as Auth
+database    "Database"                                    as DB
+
+Customer -> OrdersPage  : truy cập lịch sử mua hàng
+OrdersPage -> CustAct   : getOrders()
+activate CustAct
+
+CustAct -> CustAct      : requireUser()
+CustAct -> Auth         : auth.getUser()
+Auth --> CustAct        : { user }
+
+CustAct -> DB           : SELECT order_id, order_code,\n  total_amount, status,\n  payment_method, paid_at, created_at\nFROM orders\nWHERE user_id = $userId\nORDER BY created_at DESC
+DB --> CustAct          : orders[]
+CustAct --> OrdersPage  : orders[]
+deactivate CustAct
+OrdersPage --> Customer : hiển thị danh sách đơn hàng
+
+Customer -> DetailPage  : click vào đơn hàng cụ thể
+DetailPage -> CustAct   : getOrderDetail(orderId)
+activate CustAct
+CustAct -> CustAct      : requireUser()
+
+CustAct -> DB           : SELECT order_id, order_code,\n  total_amount, status, paid_at\nFROM orders\nWHERE order_id = $orderId\n  AND user_id = $userId
+DB --> CustAct          : order info
+
+CustAct -> DB           : SELECT order_item_id, quantity,\n  unit_price,\n  ticket_types(type_name),\n  events(event_name, start_time,\n    venues(venue_name))\nFROM order_items\nWHERE order_id = $orderId
+DB --> CustAct          : order items[]
+
+CustAct -> DB           : SELECT payment_id, amount,\n  provider, txn_ref, created_at\nFROM payments\nWHERE order_id = $orderId\nLIMIT 1
+DB --> CustAct          : payment info
+
+CustAct --> DetailPage  : { order, items[], payment }
+deactivate CustAct
+DetailPage --> Customer : hiển thị chi tiết đơn hàng,\nthông tin vé & thanh toán
+
+@enduml

@@ -110,6 +110,7 @@ export default function SellerEventDetailPage() {
 
   const badge = STATUS_BADGE[event.status] || STATUS_BADGE.draft
   const editingTicket = editingId ? tickets.find(t => t.ticket_type_id === editingId) : null
+  const isLocked = ['approved', 'published', 'completed', 'cancelled'].includes(event.status)
 
   return (
     <div className="p-8 max-w-4xl">
@@ -131,7 +132,7 @@ export default function SellerEventDetailPage() {
           </div>
         </div>
         <div className="flex items-center gap-2">
-          {(event.status === 'draft' || event.status === 'pending_approval' || event.status === 'published') && (
+          {!isLocked && (
             <>
               <Link href={`/seller/events/${id}/edit`}>
                 <Button variant="outline" size="sm">
@@ -160,6 +161,17 @@ export default function SellerEventDetailPage() {
           )}
         </div>
       </div>
+
+      {/* Locked notice */}
+      {isLocked && (
+        <div className="mb-6 flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 dark:border-amber-800/40 dark:bg-amber-950/20 px-4 py-3 text-sm text-amber-700 dark:text-amber-400">
+          <span className="mt-0.5 text-base">🔒</span>
+          <div>
+            <span className="font-semibold">Sự kiện đã được duyệt.</span>{' '}
+            Thông tin sự kiện và loại vé không thể chỉnh sửa sau khi admin đã duyệt.
+          </div>
+        </div>
+      )}
 
       {/* Event info */}
       <div className="bg-card rounded-xl border border-border p-6 mb-6 grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -193,13 +205,15 @@ export default function SellerEventDetailPage() {
         <div className="bg-card rounded-xl border border-border">
           <div className="px-6 py-4 border-b border-border flex items-center justify-between">
             <h2 className="font-semibold">Quản lý loại vé</h2>
-            <Button size="sm" variant="outline" onClick={() => { setEditingId(null); setShowForm(true) }}>
-              <Plus className="w-4 h-4 mr-1.5" /> Thêm vé
-            </Button>
+            {!isLocked && (
+              <Button size="sm" variant="outline" onClick={() => { setEditingId(null); setShowForm(true) }}>
+                <Plus className="w-4 h-4 mr-1.5" /> Thêm vé
+              </Button>
+            )}
           </div>
 
           {/* Ticket Form */}
-          {showForm && (
+          {showForm && !isLocked && (
             <div className="p-6 border-b border-border bg-secondary/30">
               <div className="flex items-center justify-between mb-4">
                 <h3 className="font-medium">{editingId ? 'Sửa loại vé' : 'Thêm loại vé mới'}</h3>
@@ -279,23 +293,27 @@ export default function SellerEventDetailPage() {
                         <td className="px-4 py-3 text-right">{t.quantity_sold}</td>
                         <td className="px-4 py-3 text-right">
                           <div className="flex items-center justify-end gap-1">
-                            <button
-                              onClick={() => setSeatMapTicketId(seatMapTicketId === t.ticket_type_id ? null : t.ticket_type_id)}
-                              className={`p-1.5 rounded-md transition-colors ${seatMapTicketId === t.ticket_type_id ? 'bg-primary/10 text-primary' : 'hover:bg-secondary text-muted-foreground'}`}
-                              title="Sơ đồ ghế"
-                            >
-                              <Grid3x3 className="w-3.5 h-3.5" />
-                            </button>
-                            <button onClick={() => startEdit(t)} className="p-1.5 hover:bg-secondary rounded-md transition-colors" title="Sửa">
-                              <Pencil className="w-3.5 h-3.5 text-muted-foreground" />
-                            </button>
-                            <button onClick={() => handleDeleteTicket(t.ticket_type_id)} className="p-1.5 hover:bg-red-50 dark:hover:bg-red-950/20 rounded-md transition-colors" title="Xóa">
-                              <Trash2 className="w-3.5 h-3.5 text-red-500" />
-                            </button>
+                            {!isLocked && (
+                              <>
+                                <button
+                                  onClick={() => setSeatMapTicketId(seatMapTicketId === t.ticket_type_id ? null : t.ticket_type_id)}
+                                  className={`p-1.5 rounded-md transition-colors ${seatMapTicketId === t.ticket_type_id ? 'bg-primary/10 text-primary' : 'hover:bg-secondary text-muted-foreground'}`}
+                                  title="Sơ đồ ghế"
+                                >
+                                  <Grid3x3 className="w-3.5 h-3.5" />
+                                </button>
+                                <button onClick={() => startEdit(t)} className="p-1.5 hover:bg-secondary rounded-md transition-colors" title="Sửa">
+                                  <Pencil className="w-3.5 h-3.5 text-muted-foreground" />
+                                </button>
+                                <button onClick={() => handleDeleteTicket(t.ticket_type_id)} className="p-1.5 hover:bg-red-50 dark:hover:bg-red-950/20 rounded-md transition-colors" title="Xóa">
+                                  <Trash2 className="w-3.5 h-3.5 text-red-500" />
+                                </button>
+                              </>
+                            )}
                           </div>
                         </td>
                       </tr>
-                      {seatMapTicketId === t.ticket_type_id && (
+                      {seatMapTicketId === t.ticket_type_id && !isLocked && (
                         <tr>
                           <td colSpan={5} className="px-4 py-4 bg-secondary/20 border-b border-border">
                             <SeatMapEditor

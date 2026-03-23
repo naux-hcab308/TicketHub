@@ -1,0 +1,73 @@
+@startuml SD_08_PaymentVNPay
+
+skinparam sequenceArrowThickness 1.5
+skinparam sequenceParticipantBackgroundColor #D6EAF8
+skinparam sequenceParticipantBorderColor #1E88E5
+skinparam sequenceLifeLineBorderColor #1E88E5
+skinparam sequenceMessageAlign left
+skinparam sequenceGroupBorderColor #E74C3C
+skinparam sequenceGroupFontSize 11
+skinparam noteFontSize 11
+skinparam noteBackgroundColor #FFF9C4
+skinparam noteBorderColor #F9A825
+skinparam actorBackgroundColor #FDEBD0
+skinparam databaseBackgroundColor #D5F5E3
+skinparam databaseBorderColor #1E8449
+
+title 8. Payment VNPay
+
+actor       "Customer"                                    as Customer
+participant "Checkout Page\n(app/checkout)"               as Checkout
+participant "Customer Actions\n(app/customer/actions.ts)" as CustAct
+participant "VNPay Gateway"                               as VNPay
+participant "Return Page\n(checkout/vnpay/return)"        as ReturnPage
+database    "Database"                                    as DB
+
+Customer -> Checkout    : xem giỏ hàng, click "Thanh toán"
+
+Checkout -> CustAct     : createOrder()
+activate CustAct
+CustAct -> CustAct      : getCart() → SELECT cart_items
+CustAct -> DB           : INSERT INTO orders {\n  order_code, user_id,\n  total_amount,\n  status: 'pending',\n  payment_method: 'vnpay'\n}
+DB --> CustAct          : { order_id, order_code }
+loop foreach cart_item
+  CustAct -> DB         : INSERT INTO order_items {\n  order_id, event_id,\n  ticket_type_id,\n  quantity, unit_price\n}
+end
+CustAct -> DB           : DELETE FROM cart_items\nWHERE cart_id = $cartId
+CustAct --> Checkout    : { success, orderId, orderCode }
+deactivate CustAct
+
+Checkout -> CustAct     : getVnpayPaymentUrl(orderId)
+activate CustAct
+CustAct -> DB           : SELECT order_id, order_code, total_amount\nFROM orders WHERE order_id = $id
+DB --> CustAct          : order info
+CustAct -> CustAct      : buildPaymentUrl({\n  amount, txnRef: orderId,\n  orderInfo, returnUrl\n})\n→ tạo URL với HMAC-SHA512
+CustAct --> Checkout    : { success, paymentUrl }
+deactivate CustAct
+
+Checkout --> Customer   : redirect → VNPay payment page
+Customer -> VNPay       : thực hiện thanh toán (QR / ATM / Visa)
+VNPay --> Customer      : redirect → /checkout/vnpay/return?vnp_*
+
+Customer -> ReturnPage  : load trang Return URL
+ReturnPage -> CustAct   : confirmOrderFromVnpayReturn(queryString)
+activate CustAct
+CustAct -> CustAct      : verifyReturnUrl(query)\n→ kiểm tra HMAC checksum
+CustAct -> CustAct      : isVnpaySuccess(vnp_ResponseCode)
+
+alt Thanh toán thành công (ResponseCode = '00')
+  CustAct -> CustAct    : confirmOrderAndGenerateTickets(\n  supabase, orderId, paymentMeta\n)
+  CustAct -> DB         : INSERT INTO payments {\n  order_id, amount, provider: 'vnpay',\n  txn_ref: vnp_TransactionNo\n}
+  CustAct -> DB         : UPDATE orders\nSET status = 'confirmed',\n    paid_at = now()
+  loop foreach order_item
+    CustAct -> DB       : INSERT INTO tickets {\n  order_item_id, event_id,\n  code: 'TKT-XXXXXX',\n  status: 'valid'\n}
+    CustAct -> DB       : UPDATE ticket_types\nSET quantity_sold = quantity_sold + N
+  end
+  CustAct --> ReturnPage : { success: true }
+  deactivate CustAct
+  ReturnPage --> Customer : "Thanh toán thành công!\nXem vé của bạn"
+else Thanh toán thất bại / huỷ
+  ReturnPage --> Customer : "Thanh toán thất bại"
+end
+
+@enduml

@@ -101,15 +101,7 @@ export async function getAssignedEvents() {
     .in('status', ['assigned', 'confirmed'])
 
   if (!assignments || assignments.length === 0) {
-    // Fallback: show all events from same seller
-    const { data: events } = await supabase
-      .from('events')
-      .select('event_id, event_name, start_time, end_time, status, venues(venue_name, city)')
-      .eq('seller_id', staff.seller_id)
-      .in('status', ['published', 'approved', 'completed'])
-      .order('start_time', { ascending: false })
-
-    return events ?? []
+    return []
   }
 
   const eventIds = assignments.map(a => a.event_id)
@@ -117,6 +109,7 @@ export async function getAssignedEvents() {
     .from('events')
     .select('event_id, event_name, start_time, end_time, status, venues(venue_name, city)')
     .in('event_id', eventIds)
+    .in('status', ['published', 'approved', 'completed'])
     .order('start_time', { ascending: false })
 
   return events ?? []

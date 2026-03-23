@@ -25,8 +25,14 @@ export default function EditEventPage() {
   const [clearBannerFlag, setClearBannerFlag] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
+  const LOCKED_STATUSES = ['approved', 'published', 'completed', 'cancelled']
+
   useEffect(() => {
     getSellerEventById(id).then(({ data, error: err }) => {
+      if (data && LOCKED_STATUSES.includes(data.status)) {
+        router.replace(`/seller/events/${id}`)
+        return
+      }
       setEvent(data)
       setBannerUrl(data?.banner_url || null)
       setError(err || null)

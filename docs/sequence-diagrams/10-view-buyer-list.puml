@@ -1,0 +1,39 @@
+@startuml SD_10_ViewBuyerList
+
+skinparam sequenceArrowThickness 1.5
+skinparam sequenceParticipantBackgroundColor #D6EAF8
+skinparam sequenceParticipantBorderColor #1E88E5
+skinparam sequenceLifeLineBorderColor #1E88E5
+skinparam sequenceMessageAlign left
+skinparam sequenceGroupBorderColor #E74C3C
+skinparam sequenceGroupFontSize 11
+skinparam noteFontSize 11
+skinparam noteBackgroundColor #FFF9C4
+skinparam noteBorderColor #F9A825
+skinparam actorBackgroundColor #FDEBD0
+skinparam databaseBackgroundColor #D5F5E3
+skinparam databaseBorderColor #1E8449
+
+title 10. View Buyer List
+
+actor       "Seller"                                      as Seller
+participant "Event Detail Page\n(seller/events/[id])"     as EventPage
+participant "Seller Actions\n(app/seller/actions.ts)"     as SellerAct
+database    "Database"                                    as DB
+
+Seller -> EventPage     : click tab "Danh sách người mua"
+EventPage -> SellerAct  : getTicketBuyers(eventId)
+activate SellerAct
+
+SellerAct -> SellerAct  : requireSeller()
+SellerAct -> DB         : SELECT seller_id FROM seller_profiles\nWHERE user_id = $userId
+DB --> SellerAct        : { seller_id }
+
+SellerAct -> DB         : SELECT\n  order_items.*,\n  orders(order_code, status, paid_at,\n    customer_id, created_at),\n  ticket_types(type_name, price)\nFROM order_items\nWHERE event_id = $eventId
+DB --> SellerAct        : danh sách người mua
+
+SellerAct --> EventPage : { data: buyers[] }
+deactivate SellerAct
+EventPage --> Seller    : hiển thị bảng danh sách người mua\n(mã đơn, loại vé, số lượng, đơn giá,\n trạng thái, ngày mua)
+
+@enduml

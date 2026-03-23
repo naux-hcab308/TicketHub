@@ -1,0 +1,85 @@
+@startuml SC_PurchaseTicket
+
+skinparam backgroundColor #FAFAFA
+skinparam state {
+  BackgroundColor        #D6EAF8
+  BorderColor            #1E88E5
+  FontColor              #1A237E
+  FontStyle              bold
+  ArrowColor             #1E88E5
+  ArrowFontColor         #333333
+  ArrowFontSize          11
+  StartColor             #1E88E5
+  EndColor               #1E88E5
+  AttributeFontSize      11
+
+  BackgroundColor<<rejected>>   #FADBD8
+  BorderColor<<rejected>>       #C0392B
+  FontColor<<rejected>>         #7B241C
+
+  BackgroundColor<<success>>    #D5F5E3
+  BorderColor<<success>>        #1E8449
+  FontColor<<success>>          #1E8449
+
+  BackgroundColor<<terminal>>   #EAECEE
+  BorderColor<<terminal>>       #7F8C8D
+  FontColor<<terminal>>         #424242
+
+  BackgroundColor<<warning>>    #FEF9E7
+  BorderColor<<warning>>        #F39C12
+  FontColor<<warning>>          #7D6608
+}
+
+title Purchase Ticket – State Diagram
+
+[*] --> InCart : Buyer selects ticket type & quantity\nand adds to cart
+
+state InCart <<warning>> {
+  InCart : entry / Ticket quantity reserved for buyer
+  InCart : do / 15-minute hold timer active
+}
+
+InCart --> Expired    : Hold timer expires\nor buyer removes item
+
+InCart --> Checkout   : Buyer clicks Checkout
+
+state Checkout {
+  Checkout : entry / Order created, cart items cleared
+  Checkout : do / Buyer redirected to VNPay\npayment page
+}
+
+Checkout --> PaymentSuccess : VNPay ResponseCode = '00'\n& HMAC checksum valid
+
+Checkout --> PaymentFailed  : Payment failed, timed out\nor buyer cancels at VNPay
+
+state PaymentSuccess <<success>> {
+  PaymentSuccess : entry / Payment verified
+  PaymentSuccess : do / Tickets generated and\n     delivered to buyer
+}
+
+state PaymentFailed <<rejected>> {
+  PaymentFailed : entry / Order marked as cancelled
+  PaymentFailed : do / No tickets issued;\n     buyer may retry
+}
+
+state Expired <<terminal>> {
+  Expired : entry / Cart item released
+  Expired : do / Quantity returned\n     to available pool
+}
+
+PaymentSuccess --> [*]
+PaymentFailed  --> [*]
+Expired        --> [*]
+
+note right of InCart
+  cart_items.hold_until prevents
+  overselling while buyer
+  completes checkout.
+end note
+
+note right of PaymentSuccess
+  Buyer can view ticket code / QR
+  in Purchase History page.
+end note
+
+@enduml

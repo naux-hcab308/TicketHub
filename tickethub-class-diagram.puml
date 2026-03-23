@@ -1,0 +1,371 @@
+@startuml TicketHub_ClassDiagram
+
+' ============================================================
+' TICKETHUB - Class Diagram (Supabase PostgreSQL Schema)
+' ============================================================
+
+skinparam classAttributeIconSize 0
+skinparam classFontSize 13
+skinparam classFontStyle bold
+skinparam classBackgroundColor #F8F9FA
+skinparam classBorderColor #495057
+skinparam classHeaderBackgroundColor #343A40
+skinparam classHeaderFontColor #FFFFFF
+skinparam arrowColor #495057
+skinparam arrowThickness 1.5
+skinparam noteBackgroundColor #FFF3CD
+skinparam noteBorderColor #FFC107
+skinparam packageBackgroundColor #E8F4FD
+skinparam packageBorderColor #1E88E5
+skinparam linetype ortho
+
+' ============================================================
+' PACKAGE: Authentication (Supabase Auth)
+' ============================================================
+package "Supabase Auth" <<Cloud>> #EDE7F6 {
+  class AuthUsers {
+    + id : uuid <<PK>>
+    + email : text
+    + created_at : timestamptz
+    ..
+    <<managed by Supabase Auth>>
+  }
+}
+
+' ============================================================
+' PACKAGE: User & Role Management
+' ============================================================
+package "User Management" <<Rectangle>> {
+
+  class Roles {
+    + role_id : serial <<PK>>
+    + role_name : text <<unique>>
+    --
+    Values: admin | seller | customer
+  }
+
+  class Profiles {
+    + user_id : uuid <<PK, FK>>
+    + full_name : text
+    + email : text
+    + phone_number : text
+    + images : text
+    + role_id : int <<FK>>
+    + status : text
+    + created_at : timestamptz
+    + updated_at : timestamptz
+    --
+    status: active | inactive | banned
+  }
+
+  class SellerProfiles {
+    + seller_id : uuid <<PK>>
+    + user_id : uuid <<FK, unique>>
+    + business_name : text
+    + email : text
+    + address : text
+    + bank_name : text
+    + bank_account_no : text
+    + kyc_status : text
+    + created_at : timestamptz
+    --
+    kyc_status: pending | verified | rejected
+  }
+
+  class CustomerProfiles {
+    + customer_id : uuid <<PK>>
+    + user_id : uuid <<FK, unique>>
+    + gender : text
+    + submitted_at : timestamptz
+    --
+    gender: male | female | other
+  }
+
+  class Staff {
+    + staff_id : uuid <<PK>>
+    + seller_id : uuid <<FK>>
+    + employee_code : text <<unique>>
+    + staff_number : text
+    + name : text
+    + shift_id : text
+    + status : text
+    + password_hash : text
+    + created_at : timestamptz
+    --
+    status: active | inactive
+  }
+
+  class StaffSessions {
+    + session_id : uuid <<PK>>
+    + staff_id : uuid <<FK>>
+    + token : text <<unique>>
+    + expires_at : timestamptz
+    + created_at : timestamptz
+  }
+}
+
+' ============================================================
+' PACKAGE: Event Management
+' ============================================================
+package "Event Management" <<Rectangle>> {
+
+  class EventCategories {
+    + category_id : uuid <<PK>>
+    + slug : text <<unique>>
+    + name : text
+    + name_vi : text
+    + sort_order : int
+    + created_at : timestamptz
+  }
+
+  class Venues {
+    + venue_id : uuid <<PK>>
+    + venue_name : text
+    + address : text
+    + city : text
+    + created_at : timestamptz
+  }
+
+  class Events {
+    + event_id : uuid <<PK>>
+    + event_name : text
+    + description : text
+    + seller_id : uuid <<FK>>
+    + venue_id : uuid <<FK>>
+    + category_id : uuid <<FK>>
+    + banner_url : text
+    + start_time : timestamptz
+    + end_time : timestamptz
+    + status : text
+    + is_deleted : boolean
+    + created_at : timestamptz
+    + updated_at : timestamptz
+    --
+    status: draft | pending_approval | approved
+           | published | cancelled | completed
+  }
+
+  class EventApprovalRequests {
+    + request_id : uuid <<PK>>
+    + event_id : uuid <<FK>>
+    + seller_id : uuid <<FK>>
+    + decision : text
+    + admin_note : text
+    + decision_at : timestamptz
+    + created_at : timestamptz
+    --
+    decision: pending | approved | rejected
+  }
+
+  class EventStaffAssignments {
+    + assignment_id : uuid <<PK>>
+    + event_id : uuid <<FK>>
+    + staff_id : uuid <<FK>>
+    + assigned_by_seller_id : uuid <<FK>>
+    + status : text
+    + assigned_at : timestamptz
+    --
+    status: assigned | confirmed | cancelled
+    UNIQUE (event_id, staff_id)
+  }
+}
+
+' ============================================================
+' PACKAGE: Ticketing
+' ============================================================
+package "Ticketing" <<Rectangle>> {
+
+  class TicketTypes {
+    + ticket_type_id : uuid <<PK>>
+    + event_id : uuid <<FK>>
+    + type_name : text
+    + price : bigint
+    + quantity_total : int
+    + quantity_sold : int
+    + sale_start : timestamptz
+    + sale_end : timestamptz
+    + has_seatmap : boolean
+    + created_at : timestamptz
+  }
+
+  class Seats {
+    + seat_id : uuid <<PK>>
+    + ticket_type_id : uuid <<FK>>
+    + event_id : uuid <<FK>>
+    + row_label : text
+    + seat_number : int
+    + label : text
+    + status : text
+    + held_by : uuid <<FK>>
+    + held_until : timestamptz
+    + ticket_id : uuid <<FK>>
+    + created_at : timestamptz
+    --
+    status: available | held | sold | disabled
+    UNIQUE (event_id, row_label, seat_number)
+  }
+
+  class Tickets {
+    + ticket_id : uuid <<PK>>
+    + order_item_id : uuid <<FK>>
+    + event_id : uuid <<FK>>
+    + code : text <<unique>>
+    + status : text
+    + is_placed : boolean
+    + created_at : timestamptz
+    --
+    status: valid | used | cancelled | expired
+  }
+
+  class CheckinLogs {
+    + checkin_id : uuid <<PK>>
+    + ticket_id : uuid <<FK>>
+    + event_id : uuid <<FK>>
+    + staff_id : uuid <<FK>>
+    + checkin_time : timestamptz
+    + result : text
+    + note : text
+    --
+    result: success | failed | duplicate
+  }
+}
+
+' ============================================================
+' PACKAGE: Shopping Cart
+' ============================================================
+package "Shopping Cart" <<Rectangle>> {
+
+  class Carts {
+    + cart_id : uuid <<PK>>
+    + customer_id : uuid <<FK, nullable>>
+    + user_id : uuid <<FK>>
+    + created_at : timestamptz
+    + updated_at : timestamptz
+  }
+
+  class CartItems {
+    + cart_id : uuid <<PK, FK>>
+    + ticket_type_id : uuid <<PK, FK>>
+    + quantity : int
+    + unit_price : bigint
+    + hold_until : timestamptz
+    + created_at : timestamptz
+    --
+    <<Composite PK>>
+  }
+}
+
+' ============================================================
+' PACKAGE: Orders & Payments
+' ============================================================
+package "Orders & Payments" <<Rectangle>> {
+
+  class Orders {
+    + order_id : uuid <<PK>>
+    + order_code : text <<unique>>
+    + customer_id : uuid <<FK, nullable>>
+    + user_id : uuid <<FK>>
+    + total_amount : bigint
+    + status : text
+    + payment_method : text
+    + paid_at : timestamptz
+    + created_at : timestamptz
+    --
+    status: pending | confirmed | cancelled | refunded
+  }
+
+  class OrderItems {
+    + order_item_id : uuid <<PK>>
+    + order_id : uuid <<FK>>
+    + event_id : uuid <<FK>>
+    + ticket_type_id : uuid <<FK>>
+    + quantity : int
+    + unit_price : bigint
+    + expires_at : timestamptz
+  }
+
+  class Payments {
+    + payment_id : uuid <<PK>>
+    + order_id : uuid <<FK>>
+    + amount : bigint
+    + provider : text
+    + payment_method : text
+    + txn_ref : text <<unique>>
+    + final_return_date : timestamptz
+    + created_at : timestamptz
+    --
+    provider: vnpay | momo | zalopay
+  }
+}
+
+' ============================================================
+' RELATIONSHIPS
+' ============================================================
+
+' --- Auth → Profiles ---
+AuthUsers "1" --> "1" Profiles : creates (trigger)\n user_id
+
+' --- User Management ---
+Roles "1" --> "0..*" Profiles : role_id
+Profiles "1" --> "0..1" SellerProfiles : user_id
+Profiles "1" --> "0..1" CustomerProfiles : user_id
+SellerProfiles "1" --> "0..*" Staff : seller_id
+Staff "1" --> "0..*" StaffSessions : staff_id
+
+' --- Event Management ---
+SellerProfiles "1" --> "0..*" Events : seller_id
+Venues "1" --> "0..*" Events : venue_id
+EventCategories "1" --> "0..*" Events : category_id
+Events "1" --> "0..*" EventApprovalRequests : event_id
+SellerProfiles "1" --> "0..*" EventApprovalRequests : seller_id
+
+' --- Staff Assignments (M:M via junction) ---
+Events "1" --> "0..*" EventStaffAssignments : event_id
+Staff "1" --> "0..*" EventStaffAssignments : staff_id
+SellerProfiles "1" --> "0..*" EventStaffAssignments : assigned_by_seller_id
+
+' --- Ticketing ---
+Events "1" --> "0..*" TicketTypes : event_id
+TicketTypes "1" --> "0..*" Seats : ticket_type_id
+Events "1" --> "0..*" Seats : event_id
+AuthUsers "1" --> "0..*" Seats : held_by
+Tickets "1" --> "0..1" Seats : ticket_id
+
+' --- Orders & Cart ---
+AuthUsers "1" --> "0..*" Carts : user_id
+CustomerProfiles "1" --> "0..1" Carts : customer_id
+Carts "1" --> "0..*" CartItems : cart_id
+TicketTypes "1" --> "0..*" CartItems : ticket_type_id
+
+AuthUsers "1" --> "0..*" Orders : user_id
+CustomerProfiles "1" --> "0..*" Orders : customer_id
+Orders "1" --> "0..*" OrderItems : order_id
+Events "1" --> "0..*" OrderItems : event_id
+TicketTypes "1" --> "0..*" OrderItems : ticket_type_id
+
+' --- Tickets ---
+OrderItems "1" --> "0..*" Tickets : order_item_id
+Events "1" --> "0..*" Tickets : event_id
+
+' --- Checkin ---
+Tickets "1" --> "0..*" CheckinLogs : ticket_id
+Events "1" --> "0..*" CheckinLogs : event_id
+Staff "1" --> "0..*" CheckinLogs : staff_id
+
+' --- Payments ---
+Orders "1" --> "0..*" Payments : order_id
+
+' ============================================================
+' LEGEND
+' ============================================================
+legend right
+  | Symbol | Meaning |
+  | <<PK>> | Primary Key |
+  | <<FK>> | Foreign Key |
+  | <<unique>> | Unique Constraint |
+  | 1 ---> 0..* | One to Many |
+  | 1 ---> 0..1 | One to One (optional) |
+  | 1 ---> 1 | One to One (mandatory) |
+endlegend
+
+@enduml

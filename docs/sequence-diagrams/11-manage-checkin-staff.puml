@@ -1,0 +1,69 @@
+@startuml SD_11_ManageCheckinStaff
+
+skinparam sequenceArrowThickness 1.5
+skinparam sequenceParticipantBackgroundColor #D6EAF8
+skinparam sequenceParticipantBorderColor #1E88E5
+skinparam sequenceLifeLineBorderColor #1E88E5
+skinparam sequenceMessageAlign left
+skinparam sequenceGroupBorderColor #E74C3C
+skinparam sequenceGroupFontSize 11
+skinparam noteFontSize 11
+skinparam noteBackgroundColor #FFF9C4
+skinparam noteBorderColor #F9A825
+skinparam actorBackgroundColor #FDEBD0
+skinparam databaseBackgroundColor #D5F5E3
+skinparam databaseBorderColor #1E8449
+
+title 11. Manage Check-in Staff
+
+actor       "Seller"                                      as Seller
+participant "Staff Page\n(app/seller/staff)"              as StaffPage
+participant "Seller Actions\n(app/seller/actions.ts)"     as SellerAct
+database    "Database"                                    as DB
+
+Seller -> StaffPage     : vào trang quản lý nhân viên
+
+StaffPage -> SellerAct  : getStaff()
+activate SellerAct
+SellerAct -> SellerAct  : requireSeller()
+SellerAct -> DB         : SELECT * FROM staff\nWHERE seller_id = $sellerId\nORDER BY created_at DESC
+DB --> SellerAct        : staff[]
+SellerAct --> StaffPage : { data: staff[] }
+deactivate SellerAct
+
+group Thêm nhân viên mới
+  Seller -> StaffPage     : điền form thêm nhân viên
+  StaffPage -> SellerAct  : addStaff(formData)
+  activate SellerAct
+  SellerAct -> SellerAct  : tạo employee_code\n= 'STF-' + Date.now().toString(36)
+  SellerAct -> DB         : INSERT INTO staff {\n  seller_id, name,\n  employee_code, staff_number,\n  shift_id, status: 'active'\n}
+  DB --> SellerAct        : ok
+  SellerAct --> StaffPage : { success: true, code: 'STF-XXX' }
+  deactivate SellerAct
+  StaffPage --> Seller    : hiển thị mã nhân viên vừa tạo
+end
+
+group Cập nhật ca làm việc
+  Seller -> StaffPage     : chỉnh sửa ca (shift_id) của nhân viên
+  StaffPage -> SellerAct  : updateStaffStatus(staffId, shiftId)
+  activate SellerAct
+  SellerAct -> SellerAct  : requireSeller()
+  SellerAct -> DB         : UPDATE staff\nSET shift_id = $shiftId\nWHERE staff_id = $staffId\n  AND seller_id = $sellerId
+  DB --> SellerAct        : ok
+  SellerAct --> StaffPage : { success: true }
+  deactivate SellerAct
+end
+
+group Xóa nhân viên
+  Seller -> StaffPage     : click "Xóa"
+  StaffPage -> SellerAct  : deleteStaff(staffId)
+  activate SellerAct
+  SellerAct -> SellerAct  : requireSeller()
+  SellerAct -> DB         : DELETE FROM staff\nWHERE staff_id = $staffId\n  AND seller_id = $sellerId
+  DB --> SellerAct        : ok
+  SellerAct --> StaffPage : { success: true }
+  deactivate SellerAct
+  StaffPage --> Seller    : cập nhật danh sách
+end
+
+@enduml

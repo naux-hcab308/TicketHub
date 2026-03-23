@@ -1,0 +1,42 @@
+@startuml SD_04_SubmitEventForApproval
+
+skinparam sequenceArrowThickness 1.5
+skinparam sequenceParticipantBackgroundColor #D6EAF8
+skinparam sequenceParticipantBorderColor #1E88E5
+skinparam sequenceLifeLineBorderColor #1E88E5
+skinparam sequenceMessageAlign left
+skinparam sequenceGroupBorderColor #E74C3C
+skinparam sequenceGroupFontSize 11
+skinparam noteFontSize 11
+skinparam noteBackgroundColor #FFF9C4
+skinparam noteBorderColor #F9A825
+skinparam actorBackgroundColor #FDEBD0
+skinparam databaseBackgroundColor #D5F5E3
+skinparam databaseBorderColor #1E8449
+
+title 4. Submit Event for Approval
+
+actor       "Seller"                                      as Seller
+participant "Event Detail Page\n(seller/events/[id])"     as EventPage
+participant "Seller Actions\n(app/seller/actions.ts)"     as SellerAct
+database    "Database"                                    as DB
+
+Seller -> EventPage     : click "Gửi duyệt"
+EventPage -> SellerAct  : submitEventForApproval(eventId)
+activate SellerAct
+
+SellerAct -> SellerAct  : requireSeller()
+SellerAct -> DB         : SELECT seller_id FROM seller_profiles\nWHERE user_id = $userId
+DB --> SellerAct        : { seller_id }
+
+SellerAct -> DB         : UPDATE events\nSET status = 'pending_approval',\n    updated_at = now()\nWHERE event_id = $eventId\n  AND seller_id = $sellerId
+DB --> SellerAct        : ok
+
+SellerAct -> DB         : INSERT INTO event_approval_requests {\n  event_id, seller_id,\n  decision: 'pending'\n}
+DB --> SellerAct        : ok
+
+SellerAct --> EventPage : { success: true }
+deactivate SellerAct
+EventPage --> Seller    : cập nhật UI → trạng thái "Chờ duyệt"
+
+@enduml

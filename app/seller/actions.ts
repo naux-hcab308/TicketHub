@@ -225,6 +225,8 @@ export async function createEvent(formData: FormData) {
   return { success: true, eventId: data.event_id }
 }
 
+const LOCKED_STATUSES = ['approved', 'published', 'completed', 'cancelled']
+
 export async function updateEvent(eventId: string, formData: FormData) {
   const { seller } = await requireSeller()
   const supabase = await createClient()
@@ -236,10 +238,14 @@ export async function updateEvent(eventId: string, formData: FormData) {
   let venue_id: string | null = null
   const { data: existingEvent } = await supabase
     .from('events')
-    .select('venue_id')
+    .select('venue_id, status')
     .eq('event_id', eventId)
     .eq('seller_id', seller.seller_id)
     .single()
+
+  if (existingEvent && LOCKED_STATUSES.includes(existingEvent.status)) {
+    return { error: 'Sự kiện đã được duyệt, không thể chỉnh sửa thông tin.' }
+  }
 
   if (venue_name?.trim()) {
     if (existingEvent?.venue_id) {
@@ -365,8 +371,19 @@ export async function createTicketType(formData: FormData) {
   await requireSeller()
   const supabase = await createClient()
 
+  const event_id = formData.get('event_id') as string
+  const { data: eventCheck } = await supabase
+    .from('events')
+    .select('status')
+    .eq('event_id', event_id)
+    .single()
+
+  if (eventCheck && LOCKED_STATUSES.includes(eventCheck.status)) {
+    return { error: 'Sự kiện đã được duyệt, không thể thêm loại vé mới.' }
+  }
+
   const { error } = await supabase.from('ticket_types').insert({
-    event_id: formData.get('event_id') as string,
+    event_id,
     type_name: formData.get('type_name') as string,
     price: parseInt(formData.get('price') as string) || 0,
     quantity_total: parseInt(formData.get('quantity_total') as string) || 0,
@@ -381,6 +398,17 @@ export async function createTicketType(formData: FormData) {
 export async function updateTicketType(ticketTypeId: string, formData: FormData) {
   await requireSeller()
   const supabase = await createClient()
+
+  const { data: ticketCheck } = await supabase
+    .from('ticket_types')
+    .select('event_id, events(status)')
+    .eq('ticket_type_id', ticketTypeId)
+    .single()
+
+  const eventStatus = (ticketCheck?.events as any)?.status
+  if (eventStatus && LOCKED_STATUSES.includes(eventStatus)) {
+    return { error: 'Sự kiện đã được duyệt, không thể chỉnh sửa loại vé.' }
+  }
 
   const { error } = await supabase
     .from('ticket_types')
@@ -400,6 +428,17 @@ export async function updateTicketType(ticketTypeId: string, formData: FormData)
 export async function deleteTicketType(ticketTypeId: string) {
   await requireSeller()
   const supabase = await createClient()
+
+  const { data: ticketCheck } = await supabase
+    .from('ticket_types')
+    .select('event_id, events(status)')
+    .eq('ticket_type_id', ticketTypeId)
+    .single()
+
+  const eventStatus = (ticketCheck?.events as any)?.status
+  if (eventStatus && LOCKED_STATUSES.includes(eventStatus)) {
+    return { error: 'Sự kiện đã được duyệt, không thể xóa loại vé.' }
+  }
 
   const { error } = await supabase
     .from('ticket_types')
@@ -524,22 +563,85 @@ export async function getStaff() {
   return { data: data ?? [], error: null }
 }
 
+export async function getStaffWithAssignments() {
+  const { seller } = await requireSeller()
+  const supabase = await createClient()
+
+  const { data, error } = await supabase
+    .from('staff')
+    .select('*, event_staff_assignments(event_id)')
+    .eq('seller_id', seller.seller_id)
+    .order('created_at', { ascending: false })
+
+  if (error) return { data: [], error: error.message }
+  return { data: data ?? [], error: null }
+}
+
+export async function getSellerPublishedEvents() {
+  const { seller } = await requireSeller()
+  const supabase = await createClient()
+
+  const { data, error } = await supabase
+    .from('events')
+    .select('event_id, event_name, start_time, status')
+    .eq('seller_id', seller.seller_id)
+    .in('status', ['published', 'approved', 'completed'])
+    .or('is_deleted.is.null,is_deleted.eq.false')
+    .order('start_time', { ascending: false })
+
+  if (error) return { data: [], error: error.message }
+  return { data: data ?? [], error: null }
+}
+
+export async function updateStaffAssignments(staffId: string, eventIds: string[]) {
+  const { seller } = await requireSeller()
+  const supabase = await createClient()
+
+  const { data: staff } = await supabase
+    .from('staff')
+    .select('staff_id')
+    .eq('staff_id', staffId)
+    .eq('seller_id', seller.seller_id)
+    .single()
+
+  if (!staff) return { error: 'Nhân viên không thuộc quyền quản lý' }
+
+  await supabase
+    .from('event_staff_assignments')
+    .delete()
+    .eq('staff_id', staffId)
+    .eq('assigned_by_seller_id', seller.seller_id)
+
+  if (eventIds.length > 0) {
+    const assignments = eventIds.map((event_id) => ({
+      staff_id: staffId,
+      event_id,
+      assigned_by_seller_id: seller.seller_id,
+      status: 'assigned',
+    }))
+    const { error } = await supabase.from('event_staff_assignments').insert(assignments)
+    if (error) return { error: error.message }
+  }
+
+  return { success: true }
+}
+
 export async function addStaff(formData: FormData) {
   const { seller } = await requireSeller()
   const supabase = await createClient()
 
   const code = `STF-${Date.now().toString(36).toUpperCase()}`
 
-  const { error } = await supabase.from('staff').insert({
+  const { data, error } = await supabase.from('staff').insert({
     seller_id: seller.seller_id,
     name: formData.get('name') as string,
     employee_code: code,
     staff_number: (formData.get('staff_number') as string) || null,
     shift_id: (formData.get('shift_id') as string) || null,
-  })
+  }).select('staff_id').single()
 
   if (error) return { error: error.message }
-  return { success: true, code }
+  return { success: true, code, staffId: data.staff_id }
 }
 
 export async function updateStaffStatus(staffId: string, shiftId: string) {

@@ -1,0 +1,152 @@
+@startuml SC_TicketPurchase
+
+skinparam backgroundColor #FAFAFA
+skinparam state {
+  BackgroundColor        #D6EAF8
+  BorderColor            #1E88E5
+  FontColor              #1A237E
+  FontStyle              bold
+  ArrowColor             #1E88E5
+  ArrowFontColor         #333333
+  ArrowFontSize          11
+  StartColor             #1E88E5
+  EndColor               #1E88E5
+  AttributeFontSize      11
+
+  BackgroundColor<<warning>>    #FEF9E7
+  BorderColor<<warning>>        #F39C12
+  FontColor<<warning>>          #7D6608
+
+  BackgroundColor<<rejected>>   #FADBD8
+  BorderColor<<rejected>>       #C0392B
+  FontColor<<rejected>>         #7B241C
+
+  BackgroundColor<<success>>    #D5F5E3
+  BorderColor<<success>>        #1E8449
+  FontColor<<success>>          #1E8449
+
+  BackgroundColor<<terminal>>   #EAECEE
+  BorderColor<<terminal>>       #7F8C8D
+  FontColor<<terminal>>         #424242
+}
+
+title Ticket Purchase – State Diagram\n(Cart Item → Order → Ticket)
+
+' ── PHASE 1: CART ──────────────────────────────────────────────
+state "Cart Phase" as Cart {
+  [*] --> Held
+
+  state Held <<warning>> {
+    Held : entry / Ticket quantity reserved for buyer
+    Held : do / 15-minute countdown timer active
+  }
+
+  Held --> [*]  : Buyer proceeds to checkout\n(hold preserved)
+  Held --> Released : Hold timer expires (15 min)\nor buyer removes item from cart
+
+  state Released <<terminal>> {
+    Released : entry / Reservation cancelled
+    Released : do / Quantity returned to available pool
+  }
+
+  Released --> [*]
+}
+
+' ── PHASE 2: ORDER ─────────────────────────────────────────────
+state "Order Phase" as Order {
+  [*] --> Pending
+
+  state Pending <<warning>> {
+    Pending : entry / Order created, payment not yet received
+    Pending : do / Cart items cleared;\n       awaiting VNPay callback
+  }
+
+  Pending --> Confirmed  : Payment successful\n(VNPay ResponseCode = '00'\n& HMAC checksum valid)
+
+  Pending --> Cancelled  : Payment failed or timed out\nor buyer cancels at VNPay
+
+  state Confirmed <<success>> {
+    Confirmed : entry / Payment verified;\n             tickets generated
+    Confirmed : do / order.status = confirmed\n       paid_at recorded
+  }
+
+  state Cancelled <<rejected>> {
+    Cancelled : entry / Payment not completed
+    Cancelled : do / No tickets issued
+  }
+
+  Confirmed --> Refunded : Event cancelled by Seller / Admin\nor refund request approved
+
+  state Refunded <<terminal>> {
+    Refunded : entry / Refund initiated to buyer
+    Refunded : do / order.status = refunded
+  }
+
+  Cancelled --> [*]
+  Refunded  --> [*]
+}
+
+' ── PHASE 3: TICKET ────────────────────────────────────────────
+state "Ticket Phase" as Ticket {
+  [*] --> Valid
+
+  state Valid <<success>> {
+    Valid : entry / Ticket ready to use
+    Valid : do / QR code / ticket code available\n     to buyer in purchase history
+  }
+
+  Valid --> Used      : Staff scans ticket at venue\n(check-in confirmed)
+
+  Valid --> Expired   : Event end time has passed\nwithout check-in
+
+  Valid --> TktCancelled : Order refunded or\nevent cancelled
+
+  state Used <<terminal>> {
+    Used : entry / Check-in recorded in checkin_logs
+    Used : do / Ticket cannot be reused
+  }
+
+  state Expired <<terminal>> {
+    Expired : entry / Ticket no longer usable
+    Expired : do / Event has ended
+  }
+
+  state TktCancelled <<rejected>> {
+    TktCancelled : entry / Ticket invalidated
+    TktCancelled : do / ticket.status = cancelled
+  }
+
+  Used          --> [*]
+  Expired       --> [*]
+  TktCancelled  --> [*]
+}
+
+' ── TOP-LEVEL TRANSITIONS ───────────────────────────────────────
+[*]       --> Cart    : Customer selects ticket type\nand adds to cart
+Cart      --> Order   : Customer clicks "Checkout"\nand order is created
+Order     --> Ticket  : Order confirmed;\none Ticket created per quantity unit
+
+note right of Cart
+  **cart_items.hold_until**
+  Prevents overselling while
+  buyer completes checkout.
+end note
+
+note right of Pending
+  Cart items are deleted immediately
+  when the order is created,
+  regardless of payment outcome.
+end note
+
+note right of Confirmed
+  One **tickets** row is inserted
+  per unit purchased in each order item.
+end note
+
+note right of Valid
+  Buyer views ticket code / QR
+  on the Purchase History page.
+  Staff scans it at check-in.
+end note
+
+@enduml

@@ -1,0 +1,104 @@
+@startuml SC_EventLifecycle
+
+skinparam backgroundColor #FAFAFA
+skinparam state {
+  BackgroundColor        #D6EAF8
+  BorderColor            #1E88E5
+  FontColor              #1A237E
+  FontStyle              bold
+  ArrowColor             #1E88E5
+  ArrowFontColor         #333333
+  ArrowFontSize          11
+  StartColor             #1E88E5
+  EndColor               #1E88E5
+  AttributeFontSize      11
+
+  BackgroundColor<<rejected>>   #FADBD8
+  BorderColor<<rejected>>       #C0392B
+  FontColor<<rejected>>         #7B241C
+
+  BackgroundColor<<success>>    #D5F5E3
+  BorderColor<<success>>        #1E8449
+  FontColor<<success>>          #1E8449
+
+  BackgroundColor<<terminal>>   #EAECEE
+  BorderColor<<terminal>>       #7F8C8D
+  FontColor<<terminal>>         #424242
+}
+
+title Event Lifecycle – Seller Creates Event
+
+[*] --> Draft : Seller creates event
+
+state Draft {
+  Draft : entry / Event saved as draft, not visible to buyers
+  Draft : do / Seller edits details, adds ticket types,\n     uploads banner
+}
+
+Draft --> PendingApproval : Seller submits for approval
+
+Draft --> Cancelled       : Seller cancels the event
+
+state PendingApproval {
+  PendingApproval : entry / Waiting for Admin review
+  PendingApproval : do / Seller cannot edit core details
+}
+
+PendingApproval --> Approved  : Admin approves the event
+
+PendingApproval --> Draft     : Admin requests revision\nSeller is allowed to edit again
+
+PendingApproval --> Cancelled : Admin rejects the event
+
+state Approved {
+  Approved : entry / Admin approved;\n           waiting for Seller to activate
+  Approved : do / Seller configures ticket types\n     and manages check-in staff
+}
+
+Approved --> Published : Seller activates\nor system auto-publishes
+
+Approved --> Cancelled : Seller / Admin cancels\nbefore going public
+
+state Published <<success>> {
+  Published : entry / Event is live and visible to buyers
+  Published : do / Ticket sales active;\n     check-in and order management enabled
+}
+
+Published --> Cancelled  : Seller / Admin cancels the event\n(refunds issued if orders exist)
+
+Published --> Completed  : Event end time has passed\nor Seller marks as completed
+
+state Cancelled <<rejected>> {
+  Cancelled : entry / Event is cancelled;\n           no new ticket purchases allowed
+  Cancelled : do / Refunds processed\n     for existing paid orders
+}
+
+state Completed <<terminal>> {
+  Completed : entry / Event has ended
+  Completed : do / Read-only data;\n     reports and buyer list available
+}
+
+Cancelled  --> [*]
+Completed  --> [*]
+
+note right of Draft
+  Event is not visible to buyers.
+  Seller has full edit access.
+end note
+
+note right of PendingApproval
+  An approval request is created
+  with status **pending**.
+end note
+
+note right of Published
+  Buyers can discover and purchase tickets.
+  Seller manages staff and check-ins.
+end note
+
+note right of Completed
+  Seller can view revenue reports.
+  Buyers can view purchase history.
+end note
+
+@enduml

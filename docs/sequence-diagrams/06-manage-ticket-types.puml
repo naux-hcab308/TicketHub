@@ -1,0 +1,70 @@
+@startuml SD_06_ManageTicketTypes
+
+skinparam sequenceArrowThickness 1.5
+skinparam sequenceParticipantBackgroundColor #D6EAF8
+skinparam sequenceParticipantBorderColor #1E88E5
+skinparam sequenceLifeLineBorderColor #1E88E5
+skinparam sequenceMessageAlign left
+skinparam sequenceGroupBorderColor #E74C3C
+skinparam sequenceGroupFontSize 11
+skinparam noteFontSize 11
+skinparam noteBackgroundColor #FFF9C4
+skinparam noteBorderColor #F9A825
+skinparam actorBackgroundColor #FDEBD0
+skinparam databaseBackgroundColor #D5F5E3
+skinparam databaseBorderColor #1E8449
+
+title 6. Manage Ticket Types
+
+actor       "Seller"                                      as Seller
+participant "Event Detail Page\n(seller/events/[id])"     as EventPage
+participant "Seller Actions\n(app/seller/actions.ts)"     as SellerAct
+database    "Database"                                    as DB
+
+Seller -> EventPage     : vào trang quản lý loại vé
+
+group Tạo loại vé mới
+  EventPage -> SellerAct  : createTicketType(formData)
+  activate SellerAct
+  SellerAct -> SellerAct  : requireSeller()
+  SellerAct -> DB         : INSERT INTO ticket_types {\n  event_id, type_name, price,\n  quantity_total,\n  sale_start, sale_end\n}
+  DB --> SellerAct        : ok
+  SellerAct --> EventPage : { success: true }
+  deactivate SellerAct
+end
+
+group Cập nhật loại vé
+  EventPage -> SellerAct  : updateTicketType(ticketTypeId, formData)
+  activate SellerAct
+  SellerAct -> SellerAct  : requireSeller()
+  SellerAct -> DB         : UPDATE ticket_types\nSET type_name, price, quantity_total,\n    sale_start, sale_end\nWHERE ticket_type_id = $id
+  DB --> SellerAct        : ok
+  SellerAct --> EventPage : { success: true }
+  deactivate SellerAct
+end
+
+group Tạo sơ đồ ghế (tùy chọn)
+  EventPage -> SellerAct  : generateSeatMap(ticketTypeId, eventId,\n  rows, seatsPerRow)
+  activate SellerAct
+  SellerAct -> SellerAct  : requireSeller()
+  SellerAct -> DB         : DELETE FROM seats\nWHERE ticket_type_id = $id
+  SellerAct -> DB         : INSERT INTO seats (batch)\n[rows × seatsPerRow ghế]
+  SellerAct -> DB         : UPDATE ticket_types\nSET has_seatmap = true,\n    quantity_total = rows × seatsPerRow
+  DB --> SellerAct        : ok
+  SellerAct --> EventPage : { success: true, totalSeats }
+  deactivate SellerAct
+end
+
+group Xóa loại vé
+  EventPage -> SellerAct  : deleteTicketType(ticketTypeId)
+  activate SellerAct
+  SellerAct -> SellerAct  : requireSeller()
+  SellerAct -> DB         : DELETE FROM ticket_types\nWHERE ticket_type_id = $id
+  DB --> SellerAct        : ok
+  SellerAct --> EventPage : { success: true }
+  deactivate SellerAct
+end
+
+EventPage --> Seller    : cập nhật danh sách loại vé
+
+@enduml

@@ -1,0 +1,74 @@
+@startuml SC_OrderTicket
+
+skinparam backgroundColor #FAFAFA
+skinparam state {
+  BackgroundColor        #D6EAF8
+  BorderColor            #1E88E5
+  FontColor              #1A237E
+  FontStyle              bold
+  ArrowColor             #1E88E5
+  ArrowFontColor         #333333
+  ArrowFontSize          11
+  StartColor             #1E88E5
+  EndColor               #1E88E5
+  AttributeFontSize      11
+
+  BackgroundColor<<rejected>>   #FADBD8
+  BorderColor<<rejected>>       #C0392B
+  FontColor<<rejected>>         #7B241C
+
+  BackgroundColor<<success>>    #D5F5E3
+  BorderColor<<success>>        #1E8449
+  FontColor<<success>>          #1E8449
+
+  BackgroundColor<<terminal>>   #EAECEE
+  BorderColor<<terminal>>       #7F8C8D
+  FontColor<<terminal>>         #424242
+}
+
+title Order – State Diagram
+
+[*] --> Pending : Buyer clicks Checkout\nOrder created, cart items cleared
+
+state Pending {
+  Pending : entry / Awaiting payment from buyer
+  Pending : do / Buyer redirected to VNPay payment page
+}
+
+Pending --> Confirmed  : Payment successful\n(VNPay ResponseCode = '00')
+
+Pending --> Cancelled  : Payment failed, timed out\nor buyer cancels at VNPay
+
+state Confirmed <<success>> {
+  Confirmed : entry / Payment verified, tickets issued
+  Confirmed : do / One ticket generated\n     per unit in each order item
+}
+
+state Cancelled <<rejected>> {
+  Cancelled : entry / Order not completed
+  Cancelled : do / No tickets issued
+}
+
+Confirmed --> Refunded : Buyer requests refund\nor event is cancelled
+
+state Refunded <<terminal>> {
+  Refunded : entry / Refund initiated to buyer
+  Refunded : do / All linked tickets invalidated
+}
+
+Cancelled --> [*]
+Refunded  --> [*]
+
+note right of Pending
+  Cart items are deleted immediately
+  when the order is created,
+  regardless of payment outcome.
+end note
+
+note right of Confirmed
+  orders.paid_at is recorded.
+  Buyer can view tickets in
+  Purchase History.
+end note
+
+@enduml

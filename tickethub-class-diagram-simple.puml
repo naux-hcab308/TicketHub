@@ -1,0 +1,177 @@
+@startuml TicketHub_ClassDiagram_Simple
+
+skinparam classAttributeIconSize 0
+skinparam classFontSize 13
+skinparam classBackgroundColor #F8F9FA
+skinparam classBorderColor #495057
+skinparam classHeaderBackgroundColor #343A40
+skinparam classHeaderFontColor #FFFFFF
+skinparam arrowColor #495057
+skinparam arrowThickness 1.5
+skinparam linetype ortho
+skinparam packageBackgroundColor #E8F4FD
+skinparam packageBorderColor #1E88E5
+
+' ============================================================
+' PACKAGE: User Management
+' ============================================================
+package "User Management" {
+
+  class Profile {
+    + user_id : uuid <<PK>>
+    + full_name : string
+    + email : string
+    + phone_number : string
+    + role : enum {admin, seller, customer}
+    + status : enum {active, inactive, banned}
+  }
+
+  class SellerProfile {
+    + seller_id : uuid <<PK>>
+    + business_name : string
+    + bank_account_no : string
+    + kyc_status : enum {pending, verified, rejected}
+  }
+
+  class CustomerProfile {
+    + customer_id : uuid <<PK>>
+    + gender : enum {male, female, other}
+  }
+
+  class Staff {
+    + staff_id : uuid <<PK>>
+    + name : string
+    + employee_code : string <<unique>>
+    + status : enum {active, inactive}
+  }
+}
+
+' ============================================================
+' PACKAGE: Event Management
+' ============================================================
+package "Event Management" {
+
+  class Event {
+    + event_id : uuid <<PK>>
+    + event_name : string
+    + description : text
+    + venue : string
+    + category : string
+    + start_time : datetime
+    + end_time : datetime
+    + status : enum {draft, pending_approval, approved,\n  published, cancelled, completed}
+    + banner_url : string
+  }
+
+  class TicketType {
+    + ticket_type_id : uuid <<PK>>
+    + type_name : string
+    + price : bigint (VND)
+    + quantity_total : int
+    + quantity_sold : int
+    + sale_start : datetime
+    + sale_end : datetime
+    + has_seatmap : boolean
+  }
+}
+
+' ============================================================
+' PACKAGE: Shopping Cart
+' ============================================================
+package "Shopping Cart" {
+
+  class Cart {
+    + cart_id : uuid <<PK>>
+  }
+
+  class CartItem {
+    + quantity : int
+    + unit_price : bigint
+    + hold_until : datetime
+  }
+}
+
+' ============================================================
+' PACKAGE: Orders & Payments
+' ============================================================
+package "Orders & Payments" {
+
+  class Order {
+    + order_id : uuid <<PK>>
+    + order_code : string <<unique>>
+    + total_amount : bigint (VND)
+    + status : enum {pending, confirmed, cancelled, refunded}
+    + payment_method : string
+    + paid_at : datetime
+  }
+
+  class OrderItem {
+    + order_item_id : uuid <<PK>>
+    + quantity : int
+    + unit_price : bigint
+  }
+
+  class Payment {
+    + payment_id : uuid <<PK>>
+    + amount : bigint (VND)
+    + provider : enum {vnpay, momo, zalopay}
+    + txn_ref : string <<unique>>
+  }
+}
+
+' ============================================================
+' PACKAGE: Ticketing & Check-in
+' ============================================================
+package "Ticketing & Check-in" {
+
+  class Ticket {
+    + ticket_id : uuid <<PK>>
+    + code : string <<unique>> (QR)
+    + status : enum {valid, used, cancelled, expired}
+    + is_placed : boolean
+  }
+
+  class CheckinLog {
+    + checkin_id : uuid <<PK>>
+    + checkin_time : datetime
+    + result : enum {success, failed, duplicate}
+    + note : text
+  }
+}
+
+' ============================================================
+' RELATIONSHIPS
+' ============================================================
+
+' User hierarchy
+Profile "1" --> "0..1" SellerProfile : is a
+Profile "1" --> "0..1" CustomerProfile : is a
+SellerProfile "1" --> "0..*" Staff : manages
+
+' Seller creates events
+SellerProfile "1" --> "0..*" Event : creates
+
+' Event has ticket types
+Event "1" *-- "1..*" TicketType : offers
+
+' Cart flow
+CustomerProfile "1" --> "1" Cart : owns
+Cart "1" *-- "0..*" CartItem
+CartItem "0..*" --> "1" TicketType : selects
+
+' Order flow
+CustomerProfile "1" --> "0..*" Order : places
+Order "1" *-- "1..*" OrderItem
+OrderItem "0..*" --> "1" TicketType : contains
+OrderItem "0..*" --> "1" Event : for
+Order "1" --> "0..1" Payment : paid via
+
+' Ticket issuance
+OrderItem "1" --> "0..*" Ticket : generates
+
+' Check-in
+Ticket "1" --> "0..*" CheckinLog : scanned in
+Staff "1" --> "0..*" CheckinLog : performs
+Event "1" --> "0..*" CheckinLog : at
+
+@enduml

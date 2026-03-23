@@ -1,0 +1,81 @@
+@startuml SC_TicketAsset
+
+skinparam backgroundColor #FAFAFA
+skinparam state {
+  BackgroundColor        #D6EAF8
+  BorderColor            #1E88E5
+  FontColor              #1A237E
+  FontStyle              bold
+  ArrowColor             #1E88E5
+  ArrowFontColor         #333333
+  ArrowFontSize          11
+  StartColor             #1E88E5
+  EndColor               #1E88E5
+  AttributeFontSize      11
+
+  BackgroundColor<<rejected>>   #FADBD8
+  BorderColor<<rejected>>       #C0392B
+  FontColor<<rejected>>         #7B241C
+
+  BackgroundColor<<success>>    #D5F5E3
+  BorderColor<<success>>        #1E8449
+  FontColor<<success>>          #1E8449
+
+  BackgroundColor<<terminal>>   #EAECEE
+  BorderColor<<terminal>>       #7F8C8D
+  FontColor<<terminal>>         #424242
+}
+
+title Ticket Asset – State Diagram
+
+[*] --> Valid : Order confirmed\nSystem generates ticket with unique code
+
+state Valid <<success>> {
+  Valid : entry / Ticket is ready to use
+  Valid : do / Buyer views ticket code / QR\n     in Purchase History
+}
+
+Valid --> Used      : Staff scans ticket at venue\n(check-in successful)
+
+Valid --> Expired   : Event end time has passed\nwithout check-in
+
+Valid --> Cancelled : Order is refunded\nor event is cancelled
+
+state Used <<terminal>> {
+  Used : entry / Check-in recorded
+  Used : do / Ticket cannot be reused;\n     duplicate scans are logged only
+}
+
+state Expired <<terminal>> {
+  Expired : entry / Ticket is no longer valid
+  Expired : do / Event has ended without\n     this ticket being scanned
+}
+
+state Cancelled <<rejected>> {
+  Cancelled : entry / Ticket is invalidated
+  Cancelled : do / Triggered by order refund\n     or event cancellation
+}
+
+Used      --> [*]
+Expired   --> [*]
+Cancelled --> [*]
+
+note right of Valid
+  Ticket remains Valid on a failed scan.
+  Every scan attempt is logged in
+  **checkin_logs** (success / failed / duplicate).
+end note
+
+note right of Used
+  A second scan on a Used ticket
+  does not change its status —
+  only adds a 'duplicate' log entry.
+end note
+
+note right of Cancelled
+  Cancellation may cascade from:
+  • orders.status = 'refunded'
+  • events.status = 'cancelled'
+end note
+
+@enduml
