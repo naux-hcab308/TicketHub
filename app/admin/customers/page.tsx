@@ -1,9 +1,9 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useTransition } from 'react'
 import Link from 'next/link'
-import { Search, Eye } from 'lucide-react'
-import { getCustomers } from '../actions'
+import { Search, Eye, UserCheck, Loader2 } from 'lucide-react'
+import { getCustomers, promoteToSeller } from '../actions'
 
 const STATUS_BADGE: Record<string, string> = {
   active: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400',
@@ -22,12 +22,34 @@ export default function CustomersPage() {
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
 
-  useEffect(() => {
+  const [promoteEmail, setPromoteEmail] = useState('')
+  const [promoteResult, setPromoteResult] = useState<{ success?: boolean; error?: string } | null>(null)
+  const [isPending, startTransition] = useTransition()
+
+  const loadCustomers = () => {
     getCustomers().then(({ data }) => {
       setCustomers(data)
       setLoading(false)
     })
+  }
+
+  useEffect(() => {
+    loadCustomers()
   }, [])
+
+  const handlePromote = () => {
+    if (!promoteEmail.trim()) return
+    setPromoteResult(null)
+    startTransition(async () => {
+      const result = await promoteToSeller(promoteEmail)
+      setPromoteResult(result)
+      if (result.success) {
+        setPromoteEmail('')
+        setLoading(true)
+        loadCustomers()
+      }
+    })
+  }
 
   const filtered = customers.filter((c) => {
     const term = search.toLowerCase()
@@ -43,6 +65,38 @@ export default function CustomersPage() {
       <div className="mb-6">
         <h1 className="text-2xl font-bold">Quản lý Users</h1>
         <p className="text-muted-foreground mt-1">Danh sách tất cả người dùng trong hệ thống</p>
+      </div>
+
+      {/* Promote to Seller */}
+      <div className="mb-6 bg-card border border-border rounded-xl p-5">
+        <div className="flex items-center gap-2 mb-1">
+          <UserCheck className="w-4 h-4 text-blue-500" />
+          <h2 className="text-sm font-semibold">Nâng cấp quyền Seller</h2>
+        </div>
+        <p className="text-xs text-muted-foreground mb-3">Nhập email của người dùng (customer) để chuyển thành seller.</p>
+        <div className="flex items-center gap-2">
+          <input
+            type="email"
+            placeholder="Nhập email người dùng..."
+            value={promoteEmail}
+            onChange={(e) => { setPromoteEmail(e.target.value); setPromoteResult(null) }}
+            onKeyDown={(e) => e.key === 'Enter' && handlePromote()}
+            className="flex-1 max-w-sm px-3 py-2 bg-background text-foreground rounded-lg border border-border focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+          />
+          <button
+            onClick={handlePromote}
+            disabled={isPending || !promoteEmail.trim()}
+            className="inline-flex items-center gap-1.5 px-4 py-2 text-sm font-medium rounded-lg bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          >
+            {isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <UserCheck className="w-3.5 h-3.5" />}
+            Xác nhận
+          </button>
+        </div>
+        {promoteResult && (
+          <p className={`mt-2 text-xs font-medium ${promoteResult.success ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
+            {promoteResult.success ? '✓ Đã nâng cấp thành công lên Seller.' : `✗ ${promoteResult.error}`}
+          </p>
+        )}
       </div>
 
       {/* Search */}

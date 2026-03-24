@@ -1,6 +1,7 @@
 'use server'
 
 import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 import { redirect } from 'next/navigation'
 
 // ── Auth guard ──────────────────────────────────────────────
@@ -188,4 +189,47 @@ export async function getCustomerDetail(userId: string) {
 
   if (error) return null
   return data
+}
+
+export async function promoteToSeller(email: string): Promise<{ success?: boolean; error?: string }> {
+  await requireAdmin()
+  const adminClient = createAdminClient()
+
+  // Find user by email
+  const { data: profile, error: fetchError } = await adminClient
+    .from('profiles')
+    .select('user_id, role_id, full_name, email')
+    .eq('email', email.trim().toLowerCase())
+    .maybeSingle()
+
+  if (fetchError) return { error: fetchError.message }
+  if (!profile) return { error: 'Không tìm thấy người dùng với email này.' }
+  if (profile.role_id === 1) return { error: 'Người dùng này là admin, không thể thay đổi.' }
+  if (profile.role_id === 2) return { error: 'Người dùng này đã là seller.' }
+
+  // Update role to seller (role_id = 2)
+  const { error: updateError } = await adminClient
+    .from('profiles')
+    .update({ role_id: 2, updated_at: new Date().toISOString() })
+    .eq('user_id', profile.user_id)
+
+  if (updateError) return { error: updateError.message }
+
+  // Create seller_profiles entry if not exists
+  const { data: existing } = await adminClient
+    .from('seller_profiles')
+    .select('seller_id')
+    .eq('user_id', profile.user_id)
+    .maybeSingle()
+
+  if (!existing) {
+    await adminClient.from('seller_profiles').insert({
+      user_id: profile.user_id,
+      business_name: profile.full_name || email,
+      email: profile.email,
+      kyc_status: 'pending',
+    })
+  }
+
+  return { success: true }
 }
